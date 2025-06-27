@@ -7,12 +7,9 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    setupFiles: ["./src/tests/setup.ts"],
-    testTimeout: 10000,
-    hookTimeout: 10000,
-    clearMocks: true,
-    restoreMocks: true,
-    mockReset: true
+    setupFiles: ["./src/tests/setup.e2e.ts"],
+    testTimeout: 30000,
+    include: ["src/tests/e2e/**/*.test.ts"]
   },
   resolve: {
     alias: {

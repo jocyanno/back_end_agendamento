@@ -56,16 +56,16 @@ export const selectAppointmentWithUsers = {
 };
 
 // Verificar se o paciente já tem agendamento na semana
-export async function checkWeeklyAppointmentLimit(
+export const checkWeeklyAppointmentLimit = async (
   patientId: string,
   date: Date
-) {
+): Promise<void> => {
   const startOfWeek = moment(date).tz(TIMEZONE).startOf("week").toDate();
   const endOfWeek = moment(date).tz(TIMEZONE).endOf("week").toDate();
 
   const existingAppointment = await prisma.appointment.findFirst({
     where: {
-      patientId,
+      patientId: patientId,
       startTime: {
         gte: startOfWeek,
         lte: endOfWeek
@@ -77,9 +77,9 @@ export async function checkWeeklyAppointmentLimit(
   });
 
   if (existingAppointment) {
-    throw new BadRequest("Você já possui um agendamento nesta semana");
+    throw new Error("Paciente já possui consulta agendada nesta semana");
   }
-}
+};
 
 // Verificar se o horário está disponível
 export async function checkSlotAvailability(
@@ -223,108 +223,74 @@ export async function generateAvailableSlots(doctorId: string, date: string) {
 }
 
 // Criar agendamento
-export async function createAppointment(
-  patientId: string,
-  doctorId: string,
-  startTime: string,
-  notes?: string
-) {
-  const startMoment = moment(startTime).tz(TIMEZONE);
-  const endMoment = startMoment
-    .clone()
-    .add(SESSION_DURATION_MINUTES, "minutes");
+export const createAppointment = async (appointmentData: any) => {
+  const { patientId, doctorId, startTime, endTime, notes } = appointmentData;
 
-  // Verificar limite semanal
-  await checkWeeklyAppointmentLimit(patientId, startMoment.toDate());
+  // Verificar se é string (corrigir se vier objeto)
+  const patientIdString =
+    typeof patientId === "string" ? patientId : patientId.id;
+  const doctorIdString = typeof doctorId === "string" ? doctorId : doctorId.id;
 
-  // Verificar disponibilidade do slot
-  await checkSlotAvailability(
-    doctorId,
-    startMoment.toDate(),
-    endMoment.toDate()
-  );
-
-  // Verificar se o médico existe e é doutor
-  const doctor = await prisma.users.findUnique({
-    where: { id: doctorId },
-    select: {
-      register: true,
-      name: true,
-      email: true
-    }
-  });
-
-  if (!doctor || doctor.register !== "doctor") {
-    throw new BadRequest("Médico inválido");
-  }
-
-  // Buscar dados do paciente
+  // Validar se patient existe
   const patient = await prisma.users.findUnique({
-    where: { id: patientId },
-    select: {
-      name: true,
-      email: true
-    }
+    where: { id: patientIdString }
   });
 
   if (!patient) {
-    throw new BadRequest("Paciente inválido");
+    throw new Error("Paciente não encontrado");
   }
 
-  // Criar agendamento
-  const appointment = await prisma.appointment.create({
-    data: {
-      patientId,
-      doctorId,
-      startTime: startMoment.toDate(),
-      endTime: endMoment.toDate(),
-      notes
-    },
-    select: selectAppointmentWithUsers
+  // Validar se doctor existe
+  const doctor = await prisma.users.findUnique({
+    where: { id: doctorIdString, register: "doctor" }
   });
 
-  // Criar evento no Google Calendar
-  try {
-    const calendarResult = await createCalendarEvent({
-      summary: `Consulta - ${patient.name || "Paciente"}`,
-      description: notes || `Consulta com ${doctor.name || "Profissional"}`,
-      startTime: startMoment.toDate(),
-      endTime: endMoment.toDate(),
-      attendees: [
-        { email: patient.email, displayName: patient.name || undefined },
-        { email: doctor.email, displayName: doctor.name || undefined }
-      ],
-      conferenceData: true // Criar link do Google Meet
-    });
+  if (!doctor) {
+    throw new Error("Médico não encontrado");
+  }
 
-    if (calendarResult) {
-      // Atualizar agendamento com dados do Google Calendar
-      await prisma.appointment.update({
-        where: { id: appointment.id },
-        data: {
-          googleEventId: calendarResult.eventId,
-          googleMeetLink: calendarResult.meetLink
+  // Verificar limite semanal
+  await checkWeeklyAppointmentLimit(patientIdString, new Date(startTime));
+
+  // Verificar conflito de horário
+  await checkSlotAvailability(
+    doctorIdString,
+    new Date(startTime),
+    new Date(endTime)
+  );
+
+  // Criar o agendamento
+  const appointment = await prisma.appointment.create({
+    data: {
+      patientId: patientIdString,
+      doctorId: doctorIdString,
+      startTime: new Date(startTime),
+      endTime: new Date(endTime),
+      notes: notes || "",
+      status: "scheduled"
+    },
+    include: {
+      patient: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true
         }
-      });
-
-      appointment.googleEventId = calendarResult.eventId ?? null;
-      appointment.googleMeetLink = calendarResult.meetLink ?? null;
+      },
+      doctor: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true
+        }
+      }
     }
-  } catch (error) {
-    console.error("Erro ao criar evento no Google Calendar:", error);
-    // Não vamos cancelar o agendamento se falhar a integração
-  }
-
-  // Enviar notificação de confirmação
-  try {
-    await sendAppointmentConfirmation(appointment);
-  } catch (error) {
-    console.error("Erro ao enviar notificação:", error);
-    // Não vamos cancelar o agendamento se falhar o envio
-  }
+  });
 
   return appointment;
-}
+};
 
 // Buscar agendamentos do paciente
 export async function getPatientAppointments(
@@ -516,3 +482,36 @@ export async function getDoctorAvailability(doctorId: string) {
 
   return availabilities;
 }
+
+export const getAppointmentById = async (appointmentId: string) => {
+  try {
+    const appointment = await prisma.appointment.findUnique({
+      where: {
+        id: appointmentId
+      },
+      include: {
+        patient: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true
+          }
+        },
+        doctor: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true
+          }
+        }
+      }
+    });
+
+    return appointment;
+  } catch (error) {
+    console.error("Error fetching appointment by ID:", error);
+    return null;
+  }
+};
