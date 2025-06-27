@@ -30,7 +30,6 @@ export const selectAppointment = {
   notes: true,
   googleEventId: true,
   googleMeetLink: true,
-  reminderSent: true,
   createdAt: true,
   updatedAt: true
 };
@@ -289,6 +288,52 @@ export const createAppointment = async (appointmentData: any) => {
     }
   });
 
+  // Criar evento no Google Calendar (que inclui lembretes automáticos)
+  try {
+    const calendarEvent = await createCalendarEvent({
+      summary: `Consulta - ${appointment.patient.name || "Paciente"}`,
+      description: `Consulta médica\n${notes ? `Observações: ${notes}` : ""}`,
+      startTime: appointment.startTime,
+      endTime: appointment.endTime,
+      attendees: [
+        {
+          email: appointment.patient.email,
+          displayName: appointment.patient.name || "Paciente"
+        },
+        {
+          email: appointment.doctor.email,
+          displayName: appointment.doctor.name || "Médico"
+        }
+      ],
+      conferenceData: true // Inclui Google Meet
+    });
+
+    // Atualizar agendamento com dados do Google Calendar
+    if (calendarEvent) {
+      await prisma.appointment.update({
+        where: { id: appointment.id },
+        data: {
+          googleEventId: calendarEvent.eventId,
+          googleMeetLink: calendarEvent.meetLink
+        }
+      });
+
+      // Atualizar o objeto appointment com os novos dados
+      appointment.googleEventId = calendarEvent.eventId;
+      appointment.googleMeetLink = calendarEvent.meetLink;
+    }
+  } catch (error) {
+    console.error("Erro ao criar evento no Google Calendar:", error);
+    // Não interrompe o fluxo se o Google Calendar falhar
+  }
+
+  // Enviar notificação de confirmação (sistema próprio)
+  try {
+    await sendAppointmentConfirmation(appointment);
+  } catch (error) {
+    console.error("Erro ao enviar notificação de confirmação:", error);
+  }
+
   return appointment;
 };
 
@@ -428,42 +473,28 @@ export async function createDoctorAvailability(
     endTime: string;
   }
 ) {
-  // Verificar se já existe disponibilidade para este dia/horário
+  // Verificar se já existe disponibilidade para este dia
   const existing = await prisma.availability.findFirst({
     where: {
       doctorId,
       dayOfWeek: availability.dayOfWeek,
-      OR: [
-        {
-          startTime: {
-            lte: availability.startTime
-          },
-          endTime: {
-            gt: availability.startTime
-          }
-        },
-        {
-          startTime: {
-            lt: availability.endTime
-          },
-          endTime: {
-            gte: availability.endTime
-          }
-        }
-      ]
+      isActive: true
     }
   });
 
   if (existing) {
     throw new BadRequest(
-      "Já existe disponibilidade configurada para este horário"
+      "Já existe disponibilidade configurada para este dia da semana"
     );
   }
 
   const created = await prisma.availability.create({
     data: {
       doctorId,
-      ...availability
+      dayOfWeek: availability.dayOfWeek,
+      startTime: availability.startTime,
+      endTime: availability.endTime,
+      isActive: true
     }
   });
 

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v3";
 import { autenticarToken } from "@/middlewares/auth";
 import { headersSchema } from "@/utils/scheme";
 import {

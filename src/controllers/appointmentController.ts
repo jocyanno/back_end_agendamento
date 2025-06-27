@@ -32,12 +32,17 @@ export async function postAppointment(
     notes?: string;
   };
 
-  const appointment = await createAppointment(
+  // Calcular endTime (50 minutos de sessão)
+  const startDate = new Date(startTime);
+  const endDate = new Date(startDate.getTime() + 50 * 60 * 1000); // +50 minutos
+
+  const appointment = await createAppointment({
     patientId,
     doctorId,
     startTime,
+    endTime: endDate.toISOString(),
     notes
-  );
+  });
 
   return reply.status(201).send({
     status: "success",
@@ -120,27 +125,42 @@ export async function postAvailability(
   request: FastifyRequest,
   reply: FastifyReply
 ) {
-  const { id: doctorId, register } = (request as AuthenticatedRequest).usuario;
+  try {
+    const { id: doctorId, register } = (request as AuthenticatedRequest)
+      .usuario;
 
-  if (register !== "doctor") {
-    return reply.status(403).send({
+    if (register !== "doctor") {
+      return reply.status(403).send({
+        status: "error",
+        message: "Apenas médicos podem configurar disponibilidade"
+      });
+    }
+
+    const availability = request.body as {
+      dayOfWeek: number;
+      startTime: string;
+      endTime: string;
+    };
+
+    const created = await createDoctorAvailability(doctorId, availability);
+
+    return reply.status(201).send({
+      status: "success",
+      data: created
+    });
+  } catch (error: any) {
+    if (error.message?.includes("Já existe disponibilidade")) {
+      return reply.status(400).send({
+        status: "error",
+        message: error.message
+      });
+    }
+
+    return reply.status(500).send({
       status: "error",
-      message: "Apenas médicos podem configurar disponibilidade"
+      message: "Erro interno do servidor"
     });
   }
-
-  const availability = request.body as {
-    dayOfWeek: number;
-    startTime: string;
-    endTime: string;
-  };
-
-  const created = await createDoctorAvailability(doctorId, availability);
-
-  return reply.status(201).send({
-    status: "success",
-    data: created
-  });
 }
 
 // Buscar disponibilidade do médico

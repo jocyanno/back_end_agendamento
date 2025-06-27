@@ -60,7 +60,6 @@ model Appointment {
   notes          String?
   googleEventId  String?           @unique
   googleMeetLink String?
-  reminderSent   Boolean           @default(false)
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 

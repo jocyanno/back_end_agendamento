@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v3";
 import { formatDate } from "@/utils/formatDate";
 
 // Enums
@@ -21,7 +21,6 @@ export const responseAppointmentSchemaProps = {
   notes: z.string().nullish(),
   googleEventId: z.string().nullish(),
   googleMeetLink: z.string().nullish(),
-  reminderSent: z.boolean(),
   createdAt: z.coerce.string().or(z.date()).transform(formatDate),
   updatedAt: z.coerce.string().or(z.date()).transform(formatDate)
 };

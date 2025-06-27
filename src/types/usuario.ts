@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v3";
 import { formatDate } from "@/utils/formatDate";
 
 const schemaRegister = z.enum(["patient", "parents", "doctor"]);

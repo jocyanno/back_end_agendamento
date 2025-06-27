@@ -116,6 +116,13 @@ async function createTestUser(data: {
 }) {
   const hashedPassword = await bcrypt.hash(data.password, 10);
 
+  // Primeiro, deletar se já existir para evitar conflitos
+  await prisma.users.deleteMany({
+    where: {
+      OR: [{ email: data.email }, { cpf: data.cpf }]
+    }
+  });
+
   return await prisma.users.create({
     data: {
       email: data.email,
@@ -136,6 +143,10 @@ async function generateToken(
 }
 
 async function cleanDatabase() {
+  // Deletar na ordem correta para respeitar as foreign keys
+  await prisma.notification.deleteMany();
+  await prisma.appointment.deleteMany();
+  await prisma.availability.deleteMany();
   await prisma.users.deleteMany();
 }
 
