@@ -1,0 +1,12 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: bitnami/postgresql:latest
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=agendamento
+      - POSTGRES_PASSWORD=agendamento
+      - POSTGRES_DB=agendamento
+

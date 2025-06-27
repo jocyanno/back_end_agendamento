@@ -1,0 +1,114 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Register {
+  patient
+  parents
+  doctor
+}
+
+model Users {
+  id              String    @id @default(cuid())
+  name            String?
+  email           String    @unique
+  password        String
+  cpf             String    @unique
+  register        Register  @default(patient)
+  image           String?
+  phone           String?   @unique
+  birthDate       DateTime?
+  address         String?
+  numberOfAddress String?
+  complement      String?
+  city            String?
+  state           String?
+  zipCode         String?
+  country         String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relacionamentos
+  appointmentsAsPatient Appointment[]  @relation("PatientAppointments")
+  appointmentsAsDoctor  Appointment[]  @relation("DoctorAppointments")
+  availabilities        Availability[]
+  notifications         Notification[]
+
+  @@map("users")
+}
+
+enum AppointmentStatus {
+  scheduled
+  confirmed
+  cancelled
+  completed
+  no_show
+}
+
+model Appointment {
+  id             String            @id @default(cuid())
+  patientId      String
+  doctorId       String
+  startTime      DateTime
+  endTime        DateTime
+  status         AppointmentStatus @default(scheduled)
+  notes          String?
+  googleEventId  String?           @unique
+  googleMeetLink String?
+  reminderSent   Boolean           @default(false)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  // Relacionamentos
+  patient      Users          @relation("PatientAppointments", fields: [patientId], references: [id])
+  doctor       Users          @relation("DoctorAppointments", fields: [doctorId], references: [id])
+  notification Notification[]
+
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([startTime])
+  @@map("appointments")
+}
+
+model Availability {
+  id        String   @id @default(cuid())
+  doctorId  String
+  dayOfWeek Int // 0-6 (domingo-sábado)
+  startTime String // formato HH:mm
+  endTime   String // formato HH:mm
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relacionamentos
+  doctor Users @relation(fields: [doctorId], references: [id])
+
+  @@unique([doctorId, dayOfWeek, startTime])
+  @@index([doctorId])
+  @@map("availabilities")
+}
+
+model Notification {
+  id            String    @id @default(cuid())
+  userId        String
+  appointmentId String?
+  type          String // reminder, cancellation, confirmation
+  title         String
+  message       String
+  sentAt        DateTime?
+  readAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  // Relacionamentos
+  user        Users        @relation(fields: [userId], references: [id])
+  appointment Appointment? @relation(fields: [appointmentId], references: [id])
+
+  @@index([userId])
+  @@index([appointmentId])
+  @@map("notifications")
+}
