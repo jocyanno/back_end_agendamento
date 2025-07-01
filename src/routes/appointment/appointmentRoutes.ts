@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import { ZodTypeProvider } from "fastify-type-provider-zod";
 import {
   postAppointment,
+  postAppointmentForPatient,
   getAvailableSlots,
   getMyAppointments,
   putAppointmentStatus,
@@ -16,6 +17,14 @@ export async function appointmentRoutes(app: FastifyInstance) {
   app
     .withTypeProvider<ZodTypeProvider>()
     .post("/appointments", appointmentDocs.postAppointment, postAppointment);
+
+  app
+    .withTypeProvider<ZodTypeProvider>()
+    .post(
+      "/appointments/create-for-patient",
+      appointmentDocs.postAppointmentForPatient,
+      postAppointmentForPatient
+    );
 
   app
     .withTypeProvider<ZodTypeProvider>()

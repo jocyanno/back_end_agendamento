@@ -23,6 +23,7 @@ export const selectUsuario = {
   state: true,
   zipCode: true,
   country: true,
+  cid: true,
   register: true,
   createdAt: true,
   updatedAt: true
@@ -203,9 +204,129 @@ export async function updateUser(
   usuarioId: string,
   data: Prisma.UsersUncheckedUpdateInput
 ) {
+  // Remover campo 'cid' se presente - apenas admins podem alterar
+  const { cid, ...allowedData } = data;
+
   const searchUser = await prisma.users.findUnique({
     where: {
       id: usuarioId
+    },
+    select: selectUsuario
+  });
+
+  if (!searchUser) {
+    throw new NotFound("User not found");
+  }
+
+  if (allowedData.email && allowedData.email !== searchUser.email) {
+    if (typeof allowedData.email === "string") {
+      // Verificar se já existe outro usuário com este email
+      const existingUser = await prisma.users.findUnique({
+        where: { email: allowedData.email },
+        select: { id: true }
+      });
+
+      if (existingUser && existingUser.id !== usuarioId) {
+        throw new BadRequest("User already exists");
+      }
+    }
+  }
+
+  if (allowedData.cpf && allowedData.cpf !== searchUser.cpf) {
+    if (typeof allowedData.cpf === "string") {
+      // Verificar se já existe outro usuário com este CPF
+      const existingUser = await prisma.users.findUnique({
+        where: { cpf: allowedData.cpf },
+        select: { id: true }
+      });
+
+      if (existingUser && existingUser.id !== usuarioId) {
+        throw new BadRequest("User already exists");
+      }
+    }
+  }
+
+  if (allowedData.password) {
+    allowedData.password = await bcrypt.hash(
+      allowedData.password as string,
+      10
+    );
+  }
+
+  // Converter birthDate para Date se for string
+  if (allowedData.birthDate && typeof allowedData.birthDate === "string") {
+    allowedData.birthDate = new Date(allowedData.birthDate);
+  }
+
+  // Remove campos com null, pois Prisma não aceita null para Date por padrão
+  const dadosLimpos = Object.fromEntries(
+    Object.entries(allowedData).filter(([_, value]) => value !== null)
+  );
+
+  try {
+    const usuarioAtualizado = await prisma.users.update({
+      where: { id: usuarioId },
+      data: {
+        ...dadosLimpos
+      },
+      select: selectUsuario
+    });
+    return usuarioAtualizado;
+  } catch (err: any) {
+    if (err.code === "P2002") {
+      throw new BadRequest("User already exists");
+    }
+    throw err;
+  }
+}
+
+export async function getAllUsers() {
+  const users = await prisma.users.findMany({
+    select: selectUsuario,
+    orderBy: [
+      { register: "desc" }, // doctors primeiro
+      { name: "asc" }
+    ]
+  });
+
+  return users;
+}
+
+export async function getAllDoctors() {
+  const doctors = await prisma.users.findMany({
+    where: {
+      register: "doctor"
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      image: true,
+      phone: true,
+      address: true,
+      city: true,
+      state: true,
+      cid: true,
+      register: true,
+      createdAt: true
+    },
+    orderBy: {
+      name: "asc"
+    }
+  });
+
+  return doctors;
+}
+
+export async function updateUserByDoctor(
+  targetUserId: string,
+  data: Prisma.UsersUncheckedUpdateInput
+) {
+  // Esta é a única função que permite alterar o campo 'cid'
+  // Apenas administradores (doctors) podem chamar esta função
+  const searchUser = await prisma.users.findUnique({
+    where: {
+      id: targetUserId
     },
     select: selectUsuario
   });
@@ -222,7 +343,7 @@ export async function updateUser(
         select: { id: true }
       });
 
-      if (existingUser && existingUser.id !== usuarioId) {
+      if (existingUser && existingUser.id !== targetUserId) {
         throw new BadRequest("User already exists");
       }
     }
@@ -236,7 +357,7 @@ export async function updateUser(
         select: { id: true }
       });
 
-      if (existingUser && existingUser.id !== usuarioId) {
+      if (existingUser && existingUser.id !== targetUserId) {
         throw new BadRequest("User already exists");
       }
     }
@@ -258,7 +379,7 @@ export async function updateUser(
 
   try {
     const usuarioAtualizado = await prisma.users.update({
-      where: { id: usuarioId },
+      where: { id: targetUserId },
       data: {
         ...dadosLimpos
       },

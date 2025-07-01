@@ -30,6 +30,7 @@ model Users {
   state           String?
   zipCode         String?
   country         String?
+  cid             String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -38,6 +39,8 @@ model Users {
   appointmentsAsDoctor  Appointment[]  @relation("DoctorAppointments")
   availabilities        Availability[]
   notifications         Notification[]
+  attendancesAsPatient  Attendance[]   @relation("AttendancePatient")
+  attendancesAsDoctor   Attendance[]   @relation("AttendanceDoctor")
 
   @@map("users")
 }
@@ -51,17 +54,16 @@ enum AppointmentStatus {
 }
 
 model Appointment {
-  id             String            @id @default(cuid())
-  patientId      String
-  doctorId       String
-  startTime      DateTime
-  endTime        DateTime
-  status         AppointmentStatus @default(scheduled)
-  notes          String?
-  googleEventId  String?           @unique
-  googleMeetLink String?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  id            String            @id @default(cuid())
+  patientId     String
+  doctorId      String
+  startTime     DateTime
+  endTime       DateTime
+  status        AppointmentStatus @default(scheduled)
+  notes         String?
+  googleEventId String?           @unique
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
 
   // Relacionamentos
   patient      Users          @relation("PatientAppointments", fields: [patientId], references: [id])
@@ -110,4 +112,22 @@ model Notification {
   @@index([userId])
   @@index([appointmentId])
   @@map("notifications")
+}
+
+model Attendance {
+  id          String   @id @default(cuid())
+  patientId   String
+  doctorId    String
+  description String
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relacionamentos
+  patient Users @relation("AttendancePatient", fields: [patientId], references: [id])
+  doctor  Users @relation("AttendanceDoctor", fields: [doctorId], references: [id])
+
+  @@index([patientId])
+  @@index([doctorId])
+  @@map("attendances")
 }

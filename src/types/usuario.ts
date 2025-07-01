@@ -18,6 +18,7 @@ export const responseUsuarioSchemaProps = {
   state: z.string().nullish(),
   zipCode: z.string().nullish(),
   country: z.string().nullish(),
+  cid: z.string().nullish(),
   register: schemaRegister,
   createdAt: z.coerce.string().or(z.date()).transform(formatDate).nullish(),
   updatedAt: z.coerce.string().or(z.date()).transform(formatDate).nullish()
@@ -39,7 +40,30 @@ export const requestUsuarioSchema = responseUsuarioSchema
 
 export const editUsuarioSchema = requestUsuarioSchema.partial();
 
+// Schema específico para edição de usuário pelo admin (doctor)
+// Inclui o campo cid que só pode ser alterado pelo administrador
+export const editUsuarioByAdminSchema = editUsuarioSchema.extend({
+  cid: z
+    .string()
+    .optional()
+    .describe("CID - Código Internacional de Doenças (apenas administradores)")
+});
+
 export const responseUsuarioLoginSchema = z.object({
   token: z.string(),
   usuario: responseUsuarioSchema
+});
+
+export const responseDoctorSchema = z.object({
+  id: z.string(),
+  name: z.string().nullish(),
+  email: z.string().transform((value) => value.toLowerCase()),
+  image: z.string().nullish(),
+  phone: z.string().nullish(),
+  address: z.string().nullish(),
+  city: z.string().nullish(),
+  state: z.string().nullish(),
+  cid: z.string().nullish(),
+  register: schemaRegister,
+  createdAt: z.coerce.string().or(z.date()).transform(formatDate).nullish()
 });

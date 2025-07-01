@@ -4,7 +4,8 @@ import moment from "moment-timezone";
 
 const TIMEZONE = "America/Sao_Paulo";
 
-// Configurar transporter do nodemailer
+// Configurar transporter do nodemailer - temporariamente desabilitado
+/* 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || "smtp.gmail.com",
   port: Number(process.env.SMTP_PORT) || 587,
@@ -14,9 +15,16 @@ const transporter = nodemailer.createTransport({
     pass: process.env.SMTP_PASSWORD
   }
 });
+*/
 
-// Enviar email
+// Enviar email - temporariamente desabilitado
 export async function sendEmail(to: string, subject: string, html: string) {
+  // Função temporariamente desabilitada para evitar erros de configuração SMTP
+  console.log("Envio de email desabilitado temporariamente");
+  console.log(`Para: ${to}, Assunto: ${subject}`);
+  return true;
+
+  /* 
   try {
     const info = await transporter.sendMail({
       from: `"Sistema de Agendamento" <${process.env.SMTP_EMAIL}>`,
@@ -31,6 +39,7 @@ export async function sendEmail(to: string, subject: string, html: string) {
     console.error("Erro ao enviar email:", error);
     return false;
   }
+  */
 }
 
 // Template de email para confirmação de agendamento
@@ -40,7 +49,6 @@ export function getAppointmentConfirmationTemplate(data: {
   date: string;
   time: string;
   location?: string;
-  meetLink?: string;
 }) {
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -56,14 +64,10 @@ export function getAppointmentConfirmationTemplate(data: {
         ${
           data.location ? `<p><strong>Local:</strong> ${data.location}</p>` : ""
         }
-        ${
-          data.meetLink
-            ? `<p><strong>Link da Reunião:</strong> <a href="${data.meetLink}">${data.meetLink}</a></p>`
-            : ""
-        }
       </div>
       
       <p><strong>Importante:</strong> Caso precise cancelar, faça isso com pelo menos 24 horas de antecedência.</p>
+      <p><strong>Lembrete:</strong> O evento foi adicionado ao seu calendário Google.</p>
       
       <p>Atenciosamente,<br>
       Sistema de Agendamento</p>
@@ -135,15 +139,15 @@ export async function sendAppointmentConfirmation(appointment: any) {
     patientName: appointment.patient.name || "Paciente",
     doctorName: appointment.doctor.name || "Profissional",
     date,
-    time,
-    meetLink: appointment.googleMeetLink
+    time
   });
 
-  await sendEmail(
-    appointment.patient.email,
-    "Confirmação de Agendamento",
-    emailHtml
-  );
+  // Envio de email temporariamente desabilitado
+  // await sendEmail(
+  //   appointment.patient.email,
+  //   "Confirmação de Agendamento",
+  //   emailHtml
+  // );
 }
 
 // Função de lembrete removida - Google Calendar cuida dos lembretes automaticamente
@@ -174,11 +178,12 @@ export async function sendAppointmentCancellation(
     reason
   });
 
-  await sendEmail(
-    appointment.patient.email,
-    "Agendamento Cancelado",
-    emailHtml
-  );
+  // Envio de email temporariamente desabilitado
+  // await sendEmail(
+  //   appointment.patient.email,
+  //   "Agendamento Cancelado",
+  //   emailHtml
+  // );
 }
 
 // Job de lembretes removido - Google Calendar cuida dos lembretes automaticamente

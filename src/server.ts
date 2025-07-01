@@ -12,11 +12,20 @@ import fastifyJwt from "@fastify/jwt";
 import { errorHandler } from "@/error-handler";
 import { usuarioRoutes } from "@/routes/user/usuarioRoutes";
 import { appointmentRoutes } from "@/routes/appointment/appointmentRoutes";
+import { attendanceRoutes } from "@/routes/attendance/attendanceRoutes";
 
-const app = fastify();
+const app = fastify({
+  logger: false,
+  serializerOpts: {
+    rounding: "floor"
+  }
+});
 
 app.register(fastifyCors, {
-  origin: "*"
+  origin: "*",
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true
 });
 
 app.register(fastifyJwt, {
@@ -50,15 +59,47 @@ app.register(fastifySwaggerUI, {
 app.setValidatorCompiler(validatorCompiler);
 app.setSerializerCompiler(serializerCompiler);
 
+// Customizar serialização de datas para garantir formato ISO completo
+app.addHook("preSerialization", async (request, reply, payload) => {
+  if (payload && typeof payload === "object") {
+    const serializeDates = (obj: any): any => {
+      if (obj === null || obj === undefined) return obj;
+
+      if (obj instanceof Date) {
+        return obj.toISOString();
+      }
+
+      if (Array.isArray(obj)) {
+        return obj.map(serializeDates);
+      }
+
+      if (typeof obj === "object") {
+        const serialized: any = {};
+        for (const [key, value] of Object.entries(obj)) {
+          serialized[key] = serializeDates(value);
+        }
+        return serialized;
+      }
+
+      return obj;
+    };
+
+    return serializeDates(payload);
+  }
+
+  return payload;
+});
+
 app.register(usuarioRoutes);
 app.register(appointmentRoutes);
+app.register(attendanceRoutes);
 
 app.setErrorHandler(errorHandler);
 
 app
   .listen({
     host: "0.0.0.0",
-    port: 3000
+    port: 4000
   })
   .then(() => {
     console.log("🚀 HTTP Server Running!");

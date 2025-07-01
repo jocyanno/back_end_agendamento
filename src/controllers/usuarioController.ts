@@ -6,10 +6,14 @@ import {
   createUser,
   createUserAdmin,
   deleteUser,
+  getAllDoctors,
+  getAllUsers,
+  getUserById,
   getUserExisting,
   getUsuarioLogado,
   getUsuarioLogadoIsAdmin,
-  updateUser
+  updateUser,
+  updateUserByDoctor
 } from "@/service/usuarioService.service";
 
 export async function getUsuario(request: FastifyRequest, reply: FastifyReply) {
@@ -43,6 +47,8 @@ export async function createUsuario(
   reply: FastifyReply
 ) {
   const parseResult = request.body as Prisma.UsersCreateInput;
+
+  console.log(parseResult);
 
   await getUserExisting({
     email: parseResult.email,
@@ -100,6 +106,65 @@ export async function updateUsuario(
   const updateUsuario = await updateUser(usuario.id, parseResult);
 
   return reply.code(200).send({
+    status: "success",
+    data: updateUsuario
+  });
+}
+
+export async function getDoctors(request: FastifyRequest, reply: FastifyReply) {
+  const doctors = await getAllDoctors();
+
+  return reply.status(200).send({
+    status: "success",
+    data: doctors
+  });
+}
+
+export async function getAllUsuarios(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  // Verificar se o usuário logado é doctor
+  await getUsuarioLogadoIsAdmin(request);
+
+  const users = await getAllUsers();
+
+  return reply.status(200).send({
+    status: "success",
+    data: users
+  });
+}
+
+export async function getUsuarioById(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  // Verificar se o usuário logado é doctor
+  await getUsuarioLogadoIsAdmin(request);
+
+  const { id } = request.params as { id: string };
+
+  const user = await getUserById(id);
+
+  return reply.status(200).send({
+    status: "success",
+    data: user
+  });
+}
+
+export async function updateUsuarioByDoctor(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  // Verificar se o usuário logado é doctor
+  await getUsuarioLogadoIsAdmin(request);
+
+  const { id } = request.params as { id: string };
+  const parseResult = request.body as Prisma.UsersUncheckedUpdateInput;
+
+  const updateUsuario = await updateUserByDoctor(id, parseResult);
+
+  return reply.status(200).send({
     status: "success",
     data: updateUsuario
   });

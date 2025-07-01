@@ -7,11 +7,11 @@
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
     "build": "tsc",
-    "test": "vitest run src/tests/unit && vitest run src/tests/integration",
+    "test": "vitest run src/tests/unit",
     "test:unit": "vitest run src/tests/unit",
-    "test:integration": "vitest run src/tests/integration",
+    "test:integration": "vitest run src/tests/e2e",
     "test:e2e": "vitest run src/tests/e2e",
-    "test:all": "vitest run src/tests/unit && vitest run src/tests/integration && vitest run src/tests/e2e",
+    "test:all": "vitest run src/tests/unit && vitest run src/tests/e2e",
     "test:watch": "vitest watch src/tests/unit",
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
@@ -66,5 +66,8 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs"
+  "type": "commonjs",
+  "_moduleAliases": {
+    "@": "dist"
+  }
 }

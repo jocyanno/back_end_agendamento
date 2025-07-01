@@ -4,9 +4,13 @@ import {
   createUsuario,
   createUsuarioAdmin,
   deleteUsuario,
+  getAllUsuarios,
+  getDoctors,
   getUsuario,
+  getUsuarioById,
   loginUsuario,
-  updateUsuario
+  updateUsuario,
+  updateUsuarioByDoctor
 } from "@/controllers/usuarioController";
 import { usuarioDocs } from "@/docs/usuario";
 
@@ -14,6 +18,18 @@ export async function usuarioRoutes(app: FastifyInstance) {
   app
     .withTypeProvider<ZodTypeProvider>()
     .get("/user", usuarioDocs.getUsuario, getUsuario);
+
+  app
+    .withTypeProvider<ZodTypeProvider>()
+    .get("/doctors", usuarioDocs.getDoctors, getDoctors);
+
+  app
+    .withTypeProvider<ZodTypeProvider>()
+    .get("/users", usuarioDocs.getAllUsuarios, getAllUsuarios);
+
+  app
+    .withTypeProvider<ZodTypeProvider>()
+    .get("/users/:id", usuarioDocs.getUsuarioById, getUsuarioById);
 
   app
     .withTypeProvider<ZodTypeProvider>()
@@ -30,6 +46,10 @@ export async function usuarioRoutes(app: FastifyInstance) {
   app
     .withTypeProvider<ZodTypeProvider>()
     .put("/user", usuarioDocs.putUsuario, updateUsuario);
+
+  app
+    .withTypeProvider<ZodTypeProvider>()
+    .put("/user/:id", usuarioDocs.putUsuarioByDoctor, updateUsuarioByDoctor);
 
   app
     .withTypeProvider<ZodTypeProvider>()

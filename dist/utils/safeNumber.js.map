@@ -1,0 +1,1 @@
+{"version":3,"file":"safeNumber.js","sourceRoot":"","sources":["../../src/utils/safeNumber.ts"],"names":[],"mappings":";;AAAA,gCAGC;AAHD,SAAgB,UAAU,CAAC,KAAc;IACvC,MAAM,GAAG,GAAG,MAAM,CAAC,KAAK,CAAC,CAAC;IAC1B,OAAO,KAAK,CAAC,GAAG,CAAC,CAAC,CAAC,CAAC,SAAS,CAAC,CAAC,CAAC,GAAG,CAAC;AACtC,CAAC"}

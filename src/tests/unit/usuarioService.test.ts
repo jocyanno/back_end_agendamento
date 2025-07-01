@@ -29,8 +29,8 @@ vi.mock("@/lib/prisma", () => ({
 // Mock do bcrypt - corrigido
 vi.mock("bcrypt", () => ({
   default: {
-    compare: vi.fn(),
-    hash: vi.fn()
+    compare: vi.fn().mockResolvedValue(true),
+    hash: vi.fn().mockResolvedValue("hashedPassword")
   }
 }));
 
@@ -66,6 +66,7 @@ describe("usuarioService", () => {
         state: null,
         zipCode: null,
         country: null,
+        cid: null,
         createdAt: new Date(),
         updatedAt: new Date()
       };
@@ -77,7 +78,7 @@ describe("usuarioService", () => {
       };
 
       vi.mocked(prisma.users.findUnique).mockResolvedValue(mockUser);
-      vi.mocked(bcrypt.compare).mockResolvedValue(true);
+      vi.mocked(bcrypt.compare).mockResolvedValue(true as any);
 
       const result = await authenticateUser(
         "test@test.com",
@@ -122,12 +123,13 @@ describe("usuarioService", () => {
         state: null,
         zipCode: null,
         country: null,
+        cid: null,
         createdAt: new Date(),
         updatedAt: new Date()
       };
 
       vi.mocked(prisma.users.findUnique).mockResolvedValue(mockUser);
-      vi.mocked(bcrypt.compare).mockResolvedValue(false);
+      vi.mocked(bcrypt.compare).mockResolvedValue(false as any);
 
       await expect(
         authenticateUser("test@test.com", "wrongpassword", {})
@@ -148,6 +150,7 @@ describe("usuarioService", () => {
       const mockCreatedUser = {
         id: "1",
         email: "test@test.com",
+        password: "hashedPassword",
         cpf: "12345678901",
         register: "patient" as const,
         name: "Test User",
@@ -161,11 +164,12 @@ describe("usuarioService", () => {
         state: null,
         zipCode: null,
         country: null,
+        cid: null,
         createdAt: new Date(),
         updatedAt: new Date()
       };
 
-      vi.mocked(bcrypt.hash).mockResolvedValue("hashedPassword");
+      vi.mocked(bcrypt.hash).mockResolvedValue("hashedPassword" as any);
       vi.mocked(prisma.users.create).mockResolvedValue(mockCreatedUser);
 
       const result = await createUser(userData);
@@ -206,6 +210,7 @@ describe("usuarioService", () => {
       const mockCreatedUser = {
         id: "1",
         email: "doctor@test.com",
+        password: "hashedPassword",
         cpf: "12345678901",
         register: "doctor" as const,
         name: "Doctor User",
@@ -219,11 +224,12 @@ describe("usuarioService", () => {
         state: null,
         zipCode: null,
         country: null,
+        cid: null,
         createdAt: new Date(),
         updatedAt: new Date()
       };
 
-      vi.mocked(bcrypt.hash).mockResolvedValue("hashedPassword");
+      vi.mocked(bcrypt.hash).mockResolvedValue("hashedPassword" as any);
       vi.mocked(prisma.users.create).mockResolvedValue(mockCreatedUser);
 
       const result = await createUserAdmin(userData);
@@ -249,6 +255,7 @@ describe("usuarioService", () => {
       const mockExistingUser = {
         id: "1",
         email: "old@test.com",
+        password: "hashedPassword",
         cpf: "12345678901",
         register: "patient" as const,
         name: "Old Name",
@@ -262,6 +269,7 @@ describe("usuarioService", () => {
         state: null,
         zipCode: null,
         country: null,
+        cid: null,
         createdAt: new Date(),
         updatedAt: new Date()
       };
@@ -301,6 +309,7 @@ describe("usuarioService", () => {
       const mockUser = {
         id: "1",
         email: "user@test.com",
+        password: "hashedPassword",
         cpf: "12345678901",
         register: "patient" as const,
         name: "User",
@@ -314,6 +323,7 @@ describe("usuarioService", () => {
         state: null,
         zipCode: null,
         country: null,
+        cid: null,
         createdAt: new Date(),
         updatedAt: new Date()
       };
@@ -336,6 +346,7 @@ describe("usuarioService", () => {
       const mockUser = {
         id: "1",
         email: "admin@test.com",
+        password: "hashedPassword",
         cpf: "12345678901",
         register: "doctor" as const,
         name: "Admin",
@@ -349,6 +360,7 @@ describe("usuarioService", () => {
         state: null,
         zipCode: null,
         country: null,
+        cid: null,
         createdAt: new Date(),
         updatedAt: new Date()
       };
@@ -372,6 +384,7 @@ describe("usuarioService", () => {
       const mockUser = {
         id: "1",
         email: "test@test.com",
+        password: "hashedPassword",
         name: "Test User",
         cpf: "12345678901",
         register: "patient" as const,
@@ -385,6 +398,7 @@ describe("usuarioService", () => {
         state: null,
         zipCode: null,
         country: null,
+        cid: null,
         createdAt: new Date(),
         updatedAt: new Date()
       };

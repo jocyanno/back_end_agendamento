@@ -4,10 +4,7 @@ import { NotFound } from "@/_errors/not-found";
 import { Unauthorized } from "@/_errors/unauthorized";
 import { AppointmentStatus } from "@prisma/client";
 import moment from "moment-timezone";
-import {
-  createCalendarEvent,
-  deleteCalendarEvent
-} from "@/service/googleCalendarService.service";
+
 import {
   sendAppointmentConfirmation,
   sendAppointmentCancellation
@@ -28,8 +25,6 @@ export const selectAppointment = {
   endTime: true,
   status: true,
   notes: true,
-  googleEventId: true,
-  googleMeetLink: true,
   createdAt: true,
   updatedAt: true
 };
@@ -117,6 +112,32 @@ export async function checkSlotAvailability(
   }
 }
 
+// Função para debug dos horários
+function debugSlotGeneration(
+  requestedDate: moment.Moment,
+  availability: any,
+  now: moment.Moment,
+  isToday: boolean,
+  currentSlot: moment.Moment
+) {
+  console.log("=== DEBUG SLOT GENERATION ===");
+  console.log("Data solicitada:", requestedDate.format("DD/MM/YYYY"));
+  console.log("Horário atual:", now.format("DD/MM/YYYY HH:mm"));
+  console.log("É hoje?", isToday);
+  console.log(
+    "Disponibilidade médico:",
+    availability.startTime,
+    "-",
+    availability.endTime
+  );
+  console.log(
+    "Primeiro slot calculado:",
+    currentSlot.format("DD/MM/YYYY HH:mm")
+  );
+  console.log("Timezone:", TIMEZONE);
+  console.log("================================");
+}
+
 // Gerar slots disponíveis para um dia
 export async function generateAvailableSlots(doctorId: string, date: string) {
   const requestedDate = moment(date).tz(TIMEZONE);
@@ -164,16 +185,44 @@ export async function generateAvailableSlots(doctorId: string, date: string) {
     .split(":")
     .map(Number);
 
+  // Determinar o horário de início
+  const startHour = availStartHour;
+  const startMin = availStartMin;
+
   let currentSlot = requestedDate
     .clone()
-    .hour(Math.max(availStartHour, START_HOUR))
-    .minute(
-      availStartHour === START_HOUR
-        ? Math.max(availStartMin, START_MINUTE)
-        : availStartMin
-    )
+    .hour(startHour)
+    .minute(startMin)
     .second(0)
     .millisecond(0);
+
+  // Se for hoje e o horário de início já passou, começar pelo próximo slot disponível
+  const now = moment().tz(TIMEZONE);
+  const isToday = requestedDate.isSame(now, "day");
+
+  if (isToday && currentSlot.isBefore(now)) {
+    // Começar pelo próximo horário redondo disponível
+    const currentHour = now.hour();
+    const currentMinute = now.minute();
+
+    // Se já passou dos minutos, ir para a próxima hora
+    if (currentMinute > 0) {
+      currentSlot = now.clone().add(1, "hour").startOf("hour");
+    } else {
+      currentSlot = now.clone().startOf("hour");
+    }
+
+    // Garantir que o slot está dentro da disponibilidade do médico
+    if (
+      currentSlot.hour() < startHour ||
+      (currentSlot.hour() === startHour && currentSlot.minute() < startMin)
+    ) {
+      currentSlot = requestedDate.clone().hour(startHour).minute(startMin);
+    }
+  }
+
+  // Debug dos horários (descomentar apenas para debug)
+  // debugSlotGeneration(requestedDate, availability, now, isToday, currentSlot);
 
   const availEndTime = requestedDate
     .clone()
@@ -201,12 +250,36 @@ export async function generateAvailableSlots(doctorId: string, date: string) {
     });
 
     // Verificar se o slot não está no passado
-    const isPastSlot = currentSlot.isBefore(moment().tz(TIMEZONE));
+    // Se for hoje, verificar se o horário já passou
+    // Se for dia futuro, todos os horários são válidos
+    const isPastSlot = isToday && currentSlot.isBefore(now);
 
     if (isAvailable && !isPastSlot && slotEnd.isSameOrBefore(endTime)) {
+      // Criar horário UTC com o valor do horário brasileiro
+      // Exemplo: 08:00 BRT vira 08:00 UTC (não 11:00 UTC)
+      const startTimeUTC = moment
+        .utc()
+        .year(currentSlot.year())
+        .month(currentSlot.month())
+        .date(currentSlot.date())
+        .hour(currentSlot.hour())
+        .minute(currentSlot.minute())
+        .second(0)
+        .millisecond(0);
+
+      const endTimeUTC = moment
+        .utc()
+        .year(slotEnd.year())
+        .month(slotEnd.month())
+        .date(slotEnd.date())
+        .hour(slotEnd.hour())
+        .minute(slotEnd.minute())
+        .second(0)
+        .millisecond(0);
+
       slots.push({
-        startTime: currentSlot.toISOString(),
-        endTime: slotEnd.toISOString(),
+        startTime: startTimeUTC.toISOString(),
+        endTime: endTimeUTC.toISOString(),
         available: true
       });
     }
@@ -218,6 +291,8 @@ export async function generateAvailableSlots(doctorId: string, date: string) {
     );
   }
 
+  // Os slots são retornados em formato UTC mas com horário brasileiro
+  // Exemplo: 08:00 BRT = 08:00 UTC (2025-07-03T08:00:00.000Z)
   return slots;
 }
 
@@ -288,44 +363,7 @@ export const createAppointment = async (appointmentData: any) => {
     }
   });
 
-  // Criar evento no Google Calendar (que inclui lembretes automáticos)
-  try {
-    const calendarEvent = await createCalendarEvent({
-      summary: `Consulta - ${appointment.patient.name || "Paciente"}`,
-      description: `Consulta médica\n${notes ? `Observações: ${notes}` : ""}`,
-      startTime: appointment.startTime,
-      endTime: appointment.endTime,
-      attendees: [
-        {
-          email: appointment.patient.email,
-          displayName: appointment.patient.name || "Paciente"
-        },
-        {
-          email: appointment.doctor.email,
-          displayName: appointment.doctor.name || "Médico"
-        }
-      ],
-      conferenceData: true // Inclui Google Meet
-    });
-
-    // Atualizar agendamento com dados do Google Calendar
-    if (calendarEvent) {
-      await prisma.appointment.update({
-        where: { id: appointment.id },
-        data: {
-          googleEventId: calendarEvent.eventId,
-          googleMeetLink: calendarEvent.meetLink
-        }
-      });
-
-      // Atualizar o objeto appointment com os novos dados
-      appointment.googleEventId = calendarEvent.eventId;
-      appointment.googleMeetLink = calendarEvent.meetLink;
-    }
-  } catch (error) {
-    console.error("Erro ao criar evento no Google Calendar:", error);
-    // Não interrompe o fluxo se o Google Calendar falhar
-  }
+  // Google Calendar removido - agendamento criado apenas no sistema
 
   // Enviar notificação de confirmação (sistema próprio)
   try {
@@ -442,20 +480,10 @@ export async function updateAppointmentStatus(
     select: selectAppointmentWithUsers
   });
 
-  // Se o agendamento foi cancelado, cancelar no Google Calendar e enviar notificação
+  // Enviar notificação de cancelamento se for cancelamento
   if (status === "cancelled") {
-    // Cancelar evento no Google Calendar
-    if (appointment.googleEventId) {
-      try {
-        await deleteCalendarEvent(appointment.googleEventId);
-      } catch (error) {
-        console.error("Erro ao cancelar evento no Google Calendar:", error);
-      }
-    }
-
-    // Enviar notificação de cancelamento
     try {
-      await sendAppointmentCancellation(appointment);
+      await sendAppointmentCancellation(updatedAppointment);
     } catch (error) {
       console.error("Erro ao enviar notificação de cancelamento:", error);
     }

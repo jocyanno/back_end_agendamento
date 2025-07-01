@@ -61,11 +61,6 @@ vi.mock("moment-timezone", () => ({
 }));
 
 // Mock dos serviços externos
-vi.mock("@/service/googleCalendarService.service", () => ({
-  createCalendarEvent: vi.fn(),
-  deleteCalendarEvent: vi.fn()
-}));
-
 vi.mock("@/service/notificationService.service", () => ({
   sendAppointmentConfirmation: vi.fn(),
   sendAppointmentCancellation: vi.fn()

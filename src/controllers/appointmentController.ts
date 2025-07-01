@@ -11,6 +11,7 @@ import {
 } from "@/service/appointmentService.service";
 import { AppointmentStatus } from "@prisma/client";
 import moment from "moment-timezone";
+import { prisma } from "@/lib/prisma";
 
 // Criar novo agendamento (paciente)
 export async function postAppointment(
@@ -205,5 +206,79 @@ export async function getTodayAppointments(
   return reply.status(200).send({
     status: "success",
     data: appointments
+  });
+}
+
+// Criar agendamento para paciente (profissional)
+export async function postAppointmentForPatient(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  const { id: currentUserId, register } = (request as AuthenticatedRequest)
+    .usuario;
+
+  // Verificar se é médico
+  if (register !== "doctor") {
+    return reply.status(403).send({
+      status: "error",
+      message: "Apenas médicos podem criar agendamentos para pacientes"
+    });
+  }
+
+  const { patientId, doctorId, startTime, notes } = request.body as {
+    patientId: string;
+    doctorId: string;
+    startTime: string;
+    notes?: string;
+  };
+
+  // Verificar se o paciente existe e não é médico
+  const patient = await prisma.users.findUnique({
+    where: { id: patientId },
+    select: { id: true, register: true }
+  });
+
+  if (!patient) {
+    return reply.status(404).send({
+      status: "error",
+      message: "Paciente não encontrado"
+    });
+  }
+
+  if (patient.register === "doctor") {
+    return reply.status(400).send({
+      status: "error",
+      message: "Não é possível agendar consulta para outro médico"
+    });
+  }
+
+  // Verificar se o médico existe
+  const doctor = await prisma.users.findUnique({
+    where: { id: doctorId },
+    select: { id: true, register: true }
+  });
+
+  if (!doctor || doctor.register !== "doctor") {
+    return reply.status(404).send({
+      status: "error",
+      message: "Médico não encontrado"
+    });
+  }
+
+  // Calcular endTime (50 minutos de sessão)
+  const startDate = new Date(startTime);
+  const endDate = new Date(startDate.getTime() + 50 * 60 * 1000); // +50 minutos
+
+  const appointment = await createAppointment({
+    patientId,
+    doctorId,
+    startTime,
+    endTime: endDate.toISOString(),
+    notes
+  });
+
+  return reply.status(201).send({
+    status: "success",
+    data: appointment
   });
 }

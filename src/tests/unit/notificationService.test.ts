@@ -59,7 +59,7 @@ const mockAppointment = {
     name: "Dr. Maria",
     email: "drmaria@test.com"
   },
-  googleMeetLink: "https://meet.google.com/test"
+  googleEventId: "google-event-123"
 };
 
 describe("Notification Service", () => {
@@ -104,8 +104,7 @@ describe("Notification Service", () => {
         patientName: "João Silva",
         doctorName: "Dr. Maria",
         date: "15/01/2024",
-        time: "10:00",
-        meetLink: "https://meet.google.com/test"
+        time: "10:00"
       };
 
       const template = getAppointmentConfirmationTemplate(data);
@@ -115,21 +114,27 @@ describe("Notification Service", () => {
       expect(template).toContain("Dr. Maria");
       expect(template).toContain("15/01/2024");
       expect(template).toContain("10:00");
-      expect(template).toContain("https://meet.google.com/test");
+      expect(template).toContain(
+        "O evento foi adicionado ao seu calendário Google"
+      );
     });
 
-    it("deve gerar template sem link de reunião", () => {
+    it("deve gerar template com informações completas", () => {
       const data = {
         patientName: "João Silva",
         doctorName: "Dr. Maria",
         date: "15/01/2024",
-        time: "10:00"
+        time: "10:00",
+        location: "Clínica ABC"
       };
 
       const template = getAppointmentConfirmationTemplate(data);
 
       expect(template).toContain("Confirmação de Agendamento");
-      expect(template).not.toContain("Link da Reunião");
+      expect(template).toContain("Clínica ABC");
+      expect(template).toContain(
+        "O evento foi adicionado ao seu calendário Google"
+      );
     });
   });
 

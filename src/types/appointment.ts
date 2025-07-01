@@ -1,5 +1,4 @@
 import { z } from "zod/v4";
-import { formatDate } from "@/utils/formatDate";
 
 // Enums
 export const appointmentStatusEnum = z.enum([
@@ -15,14 +14,13 @@ export const responseAppointmentSchemaProps = {
   id: z.string(),
   patientId: z.string(),
   doctorId: z.string(),
-  startTime: z.coerce.string().or(z.date()).transform(formatDate),
-  endTime: z.coerce.string().or(z.date()).transform(formatDate),
+  startTime: z.string(),
+  endTime: z.string(),
   status: appointmentStatusEnum,
   notes: z.string().nullish(),
   googleEventId: z.string().nullish(),
-  googleMeetLink: z.string().nullish(),
-  createdAt: z.coerce.string().or(z.date()).transform(formatDate),
-  updatedAt: z.coerce.string().or(z.date()).transform(formatDate)
+  createdAt: z.string(),
+  updatedAt: z.string()
 };
 
 export const responseAppointmentSchema = z.object(
@@ -49,13 +47,13 @@ export const responseAppointmentWithUsersSchema =
 // Schema para criar agendamento
 export const createAppointmentSchema = z.object({
   doctorId: z.string().min(1, "ID do médico é obrigatório"),
-  startTime: z.string().datetime({ message: "Data/hora de início inválida" }),
+  startTime: z.string(),
   notes: z.string().optional()
 });
 
 // Schema para atualizar agendamento
 export const updateAppointmentSchema = z.object({
-  startTime: z.string().datetime().optional(),
+  startTime: z.string().optional(),
   status: appointmentStatusEnum.optional(),
   notes: z.string().optional()
 });
@@ -83,6 +81,6 @@ export const availabilitySchema = z.object({
 export const responseAvailabilitySchema = availabilitySchema.extend({
   id: z.string(),
   doctorId: z.string(),
-  createdAt: z.coerce.string().or(z.date()).transform(formatDate),
-  updatedAt: z.coerce.string().or(z.date()).transform(formatDate)
+  createdAt: z.string(),
+  updatedAt: z.string()
 });
