@@ -16,12 +16,12 @@ exports.getAllUsers = getAllUsers;
 exports.getAllDoctors = getAllDoctors;
 exports.updateUserByDoctor = updateUserByDoctor;
 exports.deleteUser = deleteUser;
-const prisma_1 = require("@/lib/prisma");
+const prisma_1 = require("../lib/prisma");
 const bcrypt_1 = __importDefault(require("bcrypt"));
-const unauthorized_1 = require("@/_errors/unauthorized");
-const bad_request_1 = require("@/_errors/bad-request");
+const unauthorized_1 = require("../_errors/unauthorized");
+const bad_request_1 = require("../_errors/bad-request");
 const moment_timezone_1 = __importDefault(require("moment-timezone"));
-const not_found_1 = require("@/_errors/not-found");
+const not_found_1 = require("../_errors/not-found");
 exports.selectUsuario = {
     id: true,
     name: true,

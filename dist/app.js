@@ -6,7 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.build = build;
 const fastify_1 = __importDefault(require("fastify"));
 const jwt_1 = __importDefault(require("@fastify/jwt"));
-const usuarioRoutes_1 = require("@/routes/user/usuarioRoutes");
+const usuarioRoutes_1 = require("./routes/user/usuarioRoutes");
 function build(opts = {}) {
     const app = (0, fastify_1.default)(opts);
     // Registrar JWT

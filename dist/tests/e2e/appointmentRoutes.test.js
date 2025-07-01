@@ -6,12 +6,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const vitest_1 = require("vitest");
 const fastify_1 = __importDefault(require("fastify"));
 const jwt_1 = __importDefault(require("@fastify/jwt"));
-const prisma_1 = require("@/lib/prisma");
+const prisma_1 = require("../../lib/prisma");
 const bcrypt_1 = __importDefault(require("bcrypt"));
-const appointmentController_1 = require("@/controllers/appointmentController");
-const unauthorized_1 = require("@/_errors/unauthorized");
-const bad_request_1 = require("@/_errors/bad-request");
-const not_found_1 = require("@/_errors/not-found");
+const appointmentController_1 = require("../../controllers/appointmentController");
+const unauthorized_1 = require("../../_errors/unauthorized");
+const bad_request_1 = require("../../_errors/bad-request");
+const not_found_1 = require("../../_errors/not-found");
 async function createTestApp() {
     const app = (0, fastify_1.default)({ logger: false });
     await app.register(jwt_1.default, {

@@ -4,12 +4,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const vitest_1 = require("vitest");
-const usuarioService_service_1 = require("@/service/usuarioService.service");
-const prisma_1 = require("@/lib/prisma");
+const usuarioService_service_1 = require("../../service/usuarioService.service");
+const prisma_1 = require("../../lib/prisma");
 const bcrypt_1 = __importDefault(require("bcrypt"));
-const bad_request_1 = require("@/_errors/bad-request");
-const unauthorized_1 = require("@/_errors/unauthorized");
-const not_found_1 = require("@/_errors/not-found");
+const bad_request_1 = require("../../_errors/bad-request");
+const unauthorized_1 = require("../../_errors/unauthorized");
+const not_found_1 = require("../../_errors/not-found");
 // Mock completo do Prisma
 vitest_1.vi.mock("@/lib/prisma", () => ({
     prisma: {

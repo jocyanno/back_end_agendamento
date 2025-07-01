@@ -34,7 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 const vitest_1 = require("vitest");
-const appointmentController_1 = require("@/controllers/appointmentController");
+const appointmentController_1 = require("../../controllers/appointmentController");
 // Mock dos serviços
 vitest_1.vi.mock("@/service/appointmentService.service", () => ({
     createAppointment: vitest_1.vi.fn(),
@@ -77,7 +77,7 @@ vitest_1.vi.mock("moment-timezone", () => ({
     });
     (0, vitest_1.describe)("postAppointment", () => {
         (0, vitest_1.it)("deve criar agendamento para paciente", async () => {
-            const { createAppointment } = await Promise.resolve().then(() => __importStar(require("@/service/appointmentService.service")));
+            const { createAppointment } = await Promise.resolve().then(() => __importStar(require("../../service/appointmentService.service")));
             mockRequest.body = {
                 doctorId: "doctor-id",
                 startTime: "2024-01-01T10:00:00.000Z",
@@ -115,7 +115,7 @@ vitest_1.vi.mock("moment-timezone", () => ({
     });
     (0, vitest_1.describe)("getAvailableSlots", () => {
         (0, vitest_1.it)("deve retornar slots disponíveis", async () => {
-            const { generateAvailableSlots } = await Promise.resolve().then(() => __importStar(require("@/service/appointmentService.service")));
+            const { generateAvailableSlots } = await Promise.resolve().then(() => __importStar(require("../../service/appointmentService.service")));
             mockRequest.query = {
                 doctorId: "doctor-id",
                 date: "2024-01-01"
@@ -143,7 +143,7 @@ vitest_1.vi.mock("moment-timezone", () => ({
     });
     (0, vitest_1.describe)("getMyAppointments", () => {
         (0, vitest_1.it)("deve retornar agendamentos do paciente", async () => {
-            const { getPatientAppointments } = await Promise.resolve().then(() => __importStar(require("@/service/appointmentService.service")));
+            const { getPatientAppointments } = await Promise.resolve().then(() => __importStar(require("../../service/appointmentService.service")));
             mockRequest.query = {
                 status: "scheduled"
             };
@@ -167,7 +167,7 @@ vitest_1.vi.mock("moment-timezone", () => ({
             });
         });
         (0, vitest_1.it)("deve retornar agendamentos do médico com filtro de data", async () => {
-            const { getDoctorAppointments } = await Promise.resolve().then(() => __importStar(require("@/service/appointmentService.service")));
+            const { getDoctorAppointments } = await Promise.resolve().then(() => __importStar(require("../../service/appointmentService.service")));
             mockRequest.usuario = {
                 id: "doctor-id",
                 register: "doctor"
@@ -194,7 +194,7 @@ vitest_1.vi.mock("moment-timezone", () => ({
     });
     (0, vitest_1.describe)("putAppointmentStatus", () => {
         (0, vitest_1.it)("deve atualizar status do agendamento", async () => {
-            const { updateAppointmentStatus } = await Promise.resolve().then(() => __importStar(require("@/service/appointmentService.service")));
+            const { updateAppointmentStatus } = await Promise.resolve().then(() => __importStar(require("../../service/appointmentService.service")));
             mockRequest.params = { id: "appointment-id" };
             mockRequest.body = { status: "confirmed" };
             const updatedAppointment = {
@@ -217,7 +217,7 @@ vitest_1.vi.mock("moment-timezone", () => ({
     });
     (0, vitest_1.describe)("postAvailability", () => {
         (0, vitest_1.it)("deve criar disponibilidade para médico", async () => {
-            const { createDoctorAvailability } = await Promise.resolve().then(() => __importStar(require("@/service/appointmentService.service")));
+            const { createDoctorAvailability } = await Promise.resolve().then(() => __importStar(require("../../service/appointmentService.service")));
             mockRequest.usuario = {
                 id: "doctor-id",
                 register: "doctor"
@@ -265,7 +265,7 @@ vitest_1.vi.mock("moment-timezone", () => ({
     });
     (0, vitest_1.describe)("getAvailability", () => {
         (0, vitest_1.it)("deve retornar disponibilidade do médico", async () => {
-            const { getDoctorAvailability } = await Promise.resolve().then(() => __importStar(require("@/service/appointmentService.service")));
+            const { getDoctorAvailability } = await Promise.resolve().then(() => __importStar(require("../../service/appointmentService.service")));
             mockRequest.params = { doctorId: "doctor-id" };
             const mockAvailabilities = [
                 {
@@ -291,7 +291,7 @@ vitest_1.vi.mock("moment-timezone", () => ({
     });
     (0, vitest_1.describe)("getTodayAppointments", () => {
         (0, vitest_1.it)("deve retornar agendamentos do dia para médico", async () => {
-            const { getDoctorAppointments } = await Promise.resolve().then(() => __importStar(require("@/service/appointmentService.service")));
+            const { getDoctorAppointments } = await Promise.resolve().then(() => __importStar(require("../../service/appointmentService.service")));
             mockRequest.usuario = {
                 id: "doctor-id",
                 register: "doctor"

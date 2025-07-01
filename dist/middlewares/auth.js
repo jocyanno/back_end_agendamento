@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.autenticarToken = autenticarToken;
-const unauthorized_1 = require("@/_errors/unauthorized");
+const unauthorized_1 = require("../_errors/unauthorized");
 async function autenticarToken(request, reply) {
     try {
         // Verificar se o header Authorization existe

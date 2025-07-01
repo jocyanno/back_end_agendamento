@@ -9,7 +9,7 @@ exports.getAppointmentCancellationTemplate = getAppointmentCancellationTemplate;
 exports.createNotification = createNotification;
 exports.sendAppointmentConfirmation = sendAppointmentConfirmation;
 exports.sendAppointmentCancellation = sendAppointmentCancellation;
-const prisma_1 = require("@/lib/prisma");
+const prisma_1 = require("../lib/prisma");
 const moment_timezone_1 = __importDefault(require("moment-timezone"));
 const TIMEZONE = "America/Sao_Paulo";
 // Configurar transporter do nodemailer - temporariamente desabilitado

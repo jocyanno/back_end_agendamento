@@ -6,12 +6,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const vitest_1 = require("vitest");
 const fastify_1 = __importDefault(require("fastify"));
 const jwt_1 = __importDefault(require("@fastify/jwt"));
-const prisma_1 = require("@/lib/prisma");
+const prisma_1 = require("../../lib/prisma");
 const bcrypt_1 = __importDefault(require("bcrypt"));
-const usuarioController_1 = require("@/controllers/usuarioController");
-const unauthorized_1 = require("@/_errors/unauthorized");
-const bad_request_1 = require("@/_errors/bad-request");
-const not_found_1 = require("@/_errors/not-found");
+const usuarioController_1 = require("../../controllers/usuarioController");
+const unauthorized_1 = require("../../_errors/unauthorized");
+const bad_request_1 = require("../../_errors/bad-request");
+const not_found_1 = require("../../_errors/not-found");
 async function createTestApp() {
     const app = (0, fastify_1.default)({ logger: false });
     // Registrar JWT

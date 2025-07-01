@@ -1,8 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.appointmentRoutes = appointmentRoutes;
-const appointmentController_1 = require("@/controllers/appointmentController");
-const appointment_1 = require("@/docs/appointment");
+const appointmentController_1 = require("../../controllers/appointmentController");
+const appointment_1 = require("../../docs/appointment");
 async function appointmentRoutes(app) {
     // Rotas de agendamento
     app

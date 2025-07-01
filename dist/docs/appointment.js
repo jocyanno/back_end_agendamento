@@ -2,9 +2,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.attendanceDocs = exports.appointmentDocs = exports.createAppointmentForPatientSchema = exports.createAttendanceSchema = exports.attendanceSchema = void 0;
 const v4_1 = require("zod/v4");
-const auth_1 = require("@/middlewares/auth");
-const scheme_1 = require("@/utils/scheme");
-const appointment_1 = require("@/types/appointment");
+const auth_1 = require("../middlewares/auth");
+const scheme_1 = require("../utils/scheme");
+const appointment_1 = require("../types/appointment");
 const errorResponseSchema = v4_1.z.object({
     status: v4_1.z.literal("error"),
     message: v4_1.z.string()

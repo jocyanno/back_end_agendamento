@@ -1,8 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.attendanceRoutes = attendanceRoutes;
-const attendanceController_1 = require("@/controllers/attendanceController");
-const attendance_1 = require("@/docs/attendance");
+const attendanceController_1 = require("../../controllers/attendanceController");
+const attendance_1 = require("../../docs/attendance");
 async function attendanceRoutes(app) {
     app.withTypeProvider().post("/attendances", {
         schema: attendance_1.attendanceDocs.postAttendance.schema,

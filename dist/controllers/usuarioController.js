@@ -10,7 +10,7 @@ exports.getAllUsuarios = getAllUsuarios;
 exports.getUsuarioById = getUsuarioById;
 exports.updateUsuarioByDoctor = updateUsuarioByDoctor;
 exports.deleteUsuario = deleteUsuario;
-const usuarioService_service_1 = require("@/service/usuarioService.service");
+const usuarioService_service_1 = require("../service/usuarioService.service");
 async function getUsuario(request, reply) {
     const usuario = await (0, usuarioService_service_1.getUsuarioLogado)(request);
     return reply.status(200).send({

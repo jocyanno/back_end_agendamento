@@ -17,7 +17,7 @@ vitest_1.vi.mock("@/service/googleCalendarService.service", async () => {
         checkCalendarAvailability: vitest_1.vi.fn()
     };
 });
-const googleCalendarService_service_1 = require("@/service/googleCalendarService.service");
+const googleCalendarService_service_1 = require("../../service/googleCalendarService.service");
 (0, vitest_1.describe)("googleCalendarService", () => {
     (0, vitest_1.beforeEach)(() => {
         vitest_1.vi.clearAllMocks();

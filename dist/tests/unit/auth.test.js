@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const vitest_1 = require("vitest");
-const auth_1 = require("@/middlewares/auth");
+const auth_1 = require("../../middlewares/auth");
 (0, vitest_1.describe)("Auth Middleware", () => {
     let mockRequest;
     let mockReply;

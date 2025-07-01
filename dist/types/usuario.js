@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.responseDoctorSchema = exports.responseUsuarioLoginSchema = exports.editUsuarioByAdminSchema = exports.editUsuarioSchema = exports.requestUsuarioSchema = exports.responseUsuarioSchema = exports.responseUsuarioSchemaProps = void 0;
 const v4_1 = require("zod/v4");
-const formatDate_1 = require("@/utils/formatDate");
+const formatDate_1 = require("../utils/formatDate");
 const schemaRegister = v4_1.z.enum(["patient", "parents", "doctor"]);
 exports.responseUsuarioSchemaProps = {
     id: v4_1.z.string(),

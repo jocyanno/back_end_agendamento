@@ -42,10 +42,10 @@ const swagger_1 = __importDefault(require("@fastify/swagger"));
 const swagger_ui_1 = __importDefault(require("@fastify/swagger-ui"));
 const cors_1 = __importDefault(require("@fastify/cors"));
 const jwt_1 = __importDefault(require("@fastify/jwt"));
-const error_handler_1 = require("@/error-handler");
-const usuarioRoutes_1 = require("@/routes/user/usuarioRoutes");
-const appointmentRoutes_1 = require("@/routes/appointment/appointmentRoutes");
-const attendanceRoutes_1 = require("@/routes/attendance/attendanceRoutes");
+const error_handler_1 = require("./error-handler");
+const usuarioRoutes_1 = require("./routes/user/usuarioRoutes");
+const appointmentRoutes_1 = require("./routes/appointment/appointmentRoutes");
+const attendanceRoutes_1 = require("./routes/attendance/attendanceRoutes");
 const app = (0, fastify_1.default)({
     logger: false,
     serializerOpts: {

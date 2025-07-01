@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.postAttendance = postAttendance;
 exports.getMyAttendances = getMyAttendances;
 exports.getPatientAttendances = getPatientAttendances;
-const prisma_1 = require("@/lib/prisma");
+const prisma_1 = require("../lib/prisma");
 // POST /attendances
 async function postAttendance(request, reply) {
     const { id: doctorId, register } = request.usuario;

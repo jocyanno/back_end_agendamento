@@ -11,9 +11,9 @@ exports.postAvailability = postAvailability;
 exports.getAvailability = getAvailability;
 exports.getTodayAppointments = getTodayAppointments;
 exports.postAppointmentForPatient = postAppointmentForPatient;
-const appointmentService_service_1 = require("@/service/appointmentService.service");
+const appointmentService_service_1 = require("../service/appointmentService.service");
 const moment_timezone_1 = __importDefault(require("moment-timezone"));
-const prisma_1 = require("@/lib/prisma");
+const prisma_1 = require("../lib/prisma");
 // Criar novo agendamento (paciente)
 async function postAppointment(request, reply) {
     const { id: patientId, register } = request.usuario;

@@ -1,8 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.usuarioRoutes = usuarioRoutes;
-const usuarioController_1 = require("@/controllers/usuarioController");
-const usuario_1 = require("@/docs/usuario");
+const usuarioController_1 = require("../../controllers/usuarioController");
+const usuario_1 = require("../../docs/usuario");
 async function usuarioRoutes(app) {
     app
         .withTypeProvider()

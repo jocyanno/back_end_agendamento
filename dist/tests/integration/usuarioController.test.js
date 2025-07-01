@@ -34,7 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 const vitest_1 = require("vitest");
-const usuarioController_1 = require("@/controllers/usuarioController");
+const usuarioController_1 = require("../../controllers/usuarioController");
 // Mock dos serviços
 vitest_1.vi.mock("@/service/usuarioService.service", () => ({
     authenticateUser: vitest_1.vi.fn(),
@@ -68,7 +68,7 @@ vitest_1.vi.mock("@/service/usuarioService.service", () => ({
     });
     (0, vitest_1.describe)("loginUsuario", () => {
         (0, vitest_1.it)("deve fazer login com sucesso", async () => {
-            const { authenticateUser } = await Promise.resolve().then(() => __importStar(require("@/service/usuarioService.service")));
+            const { authenticateUser } = await Promise.resolve().then(() => __importStar(require("../../service/usuarioService.service")));
             mockRequest.body = {
                 email: "test@test.com",
                 password: "password123"
@@ -89,7 +89,7 @@ vitest_1.vi.mock("@/service/usuarioService.service", () => ({
     });
     (0, vitest_1.describe)("createUsuario", () => {
         (0, vitest_1.it)("deve criar usuário com sucesso", async () => {
-            const { createUser, getUserExisting } = await Promise.resolve().then(() => __importStar(require("@/service/usuarioService.service")));
+            const { createUser, getUserExisting } = await Promise.resolve().then(() => __importStar(require("../../service/usuarioService.service")));
             mockRequest.body = {
                 email: "new@test.com",
                 password: "password123",
@@ -114,7 +114,7 @@ vitest_1.vi.mock("@/service/usuarioService.service", () => ({
     });
     (0, vitest_1.describe)("getUsuario", () => {
         (0, vitest_1.it)("deve retornar dados do usuário", async () => {
-            const { getUsuarioLogado } = await Promise.resolve().then(() => __importStar(require("@/service/usuarioService.service")));
+            const { getUsuarioLogado } = await Promise.resolve().then(() => __importStar(require("../../service/usuarioService.service")));
             vitest_1.vi.mocked(getUsuarioLogado).mockResolvedValue({
                 id: "1",
                 email: "user@test.com",

@@ -1,10 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const vitest_1 = require("vitest");
-const appointmentService_service_1 = require("@/service/appointmentService.service");
-const bad_request_1 = require("@/_errors/bad-request");
-const not_found_1 = require("@/_errors/not-found");
-const unauthorized_1 = require("@/_errors/unauthorized");
+const appointmentService_service_1 = require("../../service/appointmentService.service");
+const bad_request_1 = require("../../_errors/bad-request");
+const not_found_1 = require("../../_errors/not-found");
+const unauthorized_1 = require("../../_errors/unauthorized");
 // Mock do Prisma
 vitest_1.vi.mock("@/lib/prisma", () => ({
     prisma: {
@@ -52,7 +52,7 @@ vitest_1.vi.mock("@/service/notificationService.service", () => ({
     sendAppointmentConfirmation: vitest_1.vi.fn(),
     sendAppointmentCancellation: vitest_1.vi.fn()
 }));
-const prisma_1 = require("@/lib/prisma");
+const prisma_1 = require("../../lib/prisma");
 (0, vitest_1.describe)("appointmentService", () => {
     (0, vitest_1.beforeEach)(() => {
         vitest_1.vi.clearAllMocks();
