@@ -197,6 +197,35 @@ export class appointmentDocs {
     }
   };
 
+  static deleteAvailability = {
+    preHandler: [autenticarToken],
+    schema: {
+      tags: ["Availability"],
+      summary: "Deletar disponibilidade do médico",
+      description:
+        "Deleta uma disponibilidade específica do médico logado. Não é possível deletar se houver agendamentos futuros.",
+      headers: headersSchema,
+      params: z.object({
+        availabilityId: z
+          .string()
+          .describe("ID da disponibilidade a ser deletada")
+      }),
+      response: {
+        200: z.object({
+          status: z.literal("success"),
+          data: z.object({
+            message: z.string()
+          })
+        }),
+        400: errorResponseSchema,
+        401: errorResponseSchema,
+        403: errorResponseSchema,
+        404: errorResponseSchema,
+        500: errorResponseSchema
+      }
+    }
+  };
+
   static getTodayAppointments = {
     preHandler: [autenticarToken],
     schema: {

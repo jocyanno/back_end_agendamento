@@ -574,3 +574,68 @@ export const getAppointmentById = async (appointmentId: string) => {
     return null;
   }
 };
+
+// Deletar disponibilidade do médico
+export async function deleteDoctorAvailability(
+  availabilityId: string,
+  doctorId: string
+) {
+  // Verificar se a disponibilidade existe e pertence ao médico
+  const availability = await prisma.availability.findFirst({
+    where: {
+      id: availabilityId,
+      doctorId,
+      isActive: true
+    }
+  });
+
+  if (!availability) {
+    throw new NotFound("Disponibilidade não encontrada");
+  }
+
+  // Verificar se existem agendamentos futuros para esta disponibilidade
+  const dayOfWeek = availability.dayOfWeek;
+  const startTime = availability.startTime;
+  const endTime = availability.endTime;
+
+  // Buscar agendamentos futuros que possam estar usando esta disponibilidade
+  const futureAppointments = await prisma.appointment.findMany({
+    where: {
+      doctorId,
+      startTime: {
+        gte: new Date()
+      },
+      status: {
+        in: ["scheduled", "confirmed"]
+      }
+    }
+  });
+
+  // Verificar se há agendamentos que podem estar conflitando
+  const conflictingAppointments = futureAppointments.filter((appointment) => {
+    const appointmentDate = new Date(appointment.startTime);
+    const appointmentDayOfWeek = appointmentDate.getDay();
+    const appointmentTime = appointmentDate.toTimeString().slice(0, 5); // HH:mm
+
+    return (
+      appointmentDayOfWeek === dayOfWeek &&
+      appointmentTime >= startTime &&
+      appointmentTime < endTime
+    );
+  });
+
+  if (conflictingAppointments.length > 0) {
+    throw new BadRequest(
+      "Não é possível deletar esta disponibilidade pois existem agendamentos futuros"
+    );
+  }
+
+  // Deletar a disponibilidade
+  await prisma.availability.delete({
+    where: {
+      id: availabilityId
+    }
+  });
+
+  return { message: "Disponibilidade deletada com sucesso" };
+}

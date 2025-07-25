@@ -8,7 +8,8 @@ import {
   putAppointmentStatus,
   postAvailability,
   getAvailability,
-  getTodayAppointments
+  getTodayAppointments,
+  deleteAvailability
 } from "@/controllers/appointmentController";
 import { appointmentDocs } from "@/docs/appointment";
 
@@ -69,5 +70,13 @@ export async function appointmentRoutes(app: FastifyInstance) {
       "/availability/:doctorId",
       appointmentDocs.getAvailability,
       getAvailability
+    );
+
+  app
+    .withTypeProvider<ZodTypeProvider>()
+    .delete(
+      "/availability/:availabilityId",
+      appointmentDocs.deleteAvailability,
+      deleteAvailability
     );
 }

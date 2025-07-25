@@ -7,7 +7,8 @@ import {
   getDoctorAppointments,
   updateAppointmentStatus,
   createDoctorAvailability,
-  getDoctorAvailability
+  getDoctorAvailability,
+  deleteDoctorAvailability
 } from "@/service/appointmentService.service";
 import { AppointmentStatus } from "@prisma/client";
 import moment from "moment-timezone";
@@ -281,4 +282,50 @@ export async function postAppointmentForPatient(
     status: "success",
     data: appointment
   });
+}
+
+// Deletar disponibilidade (médico)
+export async function deleteAvailability(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  try {
+    const { id: doctorId, register } = (request as AuthenticatedRequest)
+      .usuario;
+
+    if (register !== "doctor") {
+      return reply.status(403).send({
+        status: "error",
+        message: "Apenas médicos podem deletar disponibilidade"
+      });
+    }
+
+    const { availabilityId } = request.params as { availabilityId: string };
+
+    const result = await deleteDoctorAvailability(availabilityId, doctorId);
+
+    return reply.status(200).send({
+      status: "success",
+      data: result
+    });
+  } catch (error: any) {
+    if (error.message?.includes("não encontrada")) {
+      return reply.status(404).send({
+        status: "error",
+        message: error.message
+      });
+    }
+
+    if (error.message?.includes("agendamentos futuros")) {
+      return reply.status(400).send({
+        status: "error",
+        message: error.message
+      });
+    }
+
+    return reply.status(500).send({
+      status: "error",
+      message: "Erro interno do servidor"
+    });
+  }
 }
