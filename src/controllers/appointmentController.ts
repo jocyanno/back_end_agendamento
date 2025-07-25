@@ -9,7 +9,8 @@ import {
   createDoctorAvailability,
   getDoctorAvailability,
   deleteDoctorAvailability,
-  cancelAppointmentByAttendant
+  cancelAppointmentByAttendant,
+  canPatientScheduleWithDoctor
 } from "@/service/appointmentService.service";
 import { AppointmentStatus } from "@prisma/client";
 import moment from "moment-timezone";
@@ -220,7 +221,7 @@ export async function postAppointmentForPatient(
     .usuario;
 
   // Verificar se é médico
-  if (register !== "doctor") {
+  if (register !== "doctor" && register !== "attendant") {
     return reply.status(403).send({
       status: "error",
       message: "Apenas médicos podem criar agendamentos para pacientes"
@@ -374,6 +375,35 @@ export async function cancelAppointmentByAttendantController(
       });
     }
 
+    return reply.status(500).send({
+      status: "error",
+      message: "Erro interno do servidor"
+    });
+  }
+}
+
+// Verificar se o paciente pode agendar com um profissional específico
+export async function checkPatientDoctorAvailability(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  try {
+    const { patientId, doctorId } = request.params as {
+      patientId: string;
+      doctorId: string;
+    };
+
+    const availability = await canPatientScheduleWithDoctor(
+      patientId,
+      doctorId
+    );
+
+    return reply.status(200).send({
+      status: "success",
+      data: availability
+    });
+  } catch (error) {
+    console.error("Erro ao verificar disponibilidade:", error);
     return reply.status(500).send({
       status: "error",
       message: "Erro interno do servidor"

@@ -90,6 +90,17 @@ export const getUsuarioLogadoIsAdmin = async (request: FastifyRequest) => {
   return searchUsuario(usuarioId);
 };
 
+export const getUsuarioLogadoIsAdminOrAttendant = async (request: FastifyRequest) => {
+  const { id: usuarioId, register } = (request as AuthenticatedRequest).usuario;
+
+  // Verifica diretamente do token se é doctor, mais eficiente
+  if (register !== "doctor" && register !== "attendant") {
+    throw new Unauthorized("User is not doctor");
+  }
+
+  return searchUsuario(usuarioId);
+};
+
 export async function getUserById(usuarioId: string) {
   const user = await prisma.users.findUnique({
     where: {
@@ -290,9 +301,14 @@ export async function updateUser(
 
 export async function getAllUsers() {
   const users = await prisma.users.findMany({
+    where: {
+      OR: [
+        { register: "patient" },
+        { register: "parents" }
+      ]
+    },
     select: selectUsuario,
     orderBy: [
-      { register: "desc" }, // doctors primeiro
       { name: "asc" }
     ]
   });

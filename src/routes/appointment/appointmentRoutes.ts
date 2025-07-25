@@ -10,7 +10,8 @@ import {
   getAvailability,
   getTodayAppointments,
   deleteAvailability,
-  cancelAppointmentByAttendantController
+  cancelAppointmentByAttendantController,
+  checkPatientDoctorAvailability
 } from "@/controllers/appointmentController";
 import { appointmentDocs } from "@/docs/appointment";
 
@@ -66,6 +67,14 @@ export async function appointmentRoutes(app: FastifyInstance) {
       "/appointments/:appointmentId/cancel",
       appointmentDocs.cancelAppointmentByAttendant,
       cancelAppointmentByAttendantController
+    );
+
+  app
+    .withTypeProvider<ZodTypeProvider>()
+    .get(
+      "/appointments/check-availability/:patientId/:doctorId",
+      appointmentDocs.checkPatientDoctorAvailability,
+      checkPatientDoctorAvailability
     );
 
   // Rotas de disponibilidade

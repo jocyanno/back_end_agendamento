@@ -49,6 +49,28 @@ export const selectAppointmentWithUsers = {
   }
 };
 
+// Verificar se o paciente já tem agendamento pendente com o profissional específico
+export const checkPendingAppointmentWithDoctor = async (
+  patientId: string,
+  doctorId: string
+): Promise<void> => {
+  const pendingAppointment = await prisma.appointment.findFirst({
+    where: {
+      patientId: patientId,
+      doctorId: doctorId,
+      status: {
+        in: ["scheduled", "confirmed"] // Agendamentos pendentes
+      }
+    }
+  });
+
+  if (pendingAppointment) {
+    throw new BadRequest(
+      `Paciente já possui um agendamento pendente com este profissional. Agendamento ID: ${pendingAppointment.id}`
+    );
+  }
+};
+
 // Verificar se o paciente já tem agendamento na semana
 export const checkWeeklyAppointmentLimit = async (
   patientId: string,
@@ -323,8 +345,8 @@ export const createAppointment = async (appointmentData: any) => {
     throw new Error("Médico não encontrado");
   }
 
-  // Verificar limite semanal
-  await checkWeeklyAppointmentLimit(patientIdString, new Date(startTime));
+  // Verificar agendamento pendente com o profissional específico
+  await checkPendingAppointmentWithDoctor(patientIdString, doctorIdString);
 
   // Verificar conflito de horário
   await checkSlotAvailability(
@@ -373,6 +395,59 @@ export const createAppointment = async (appointmentData: any) => {
   }
 
   return appointment;
+};
+
+// Verificar se o paciente pode agendar com um profissional específico
+export const canPatientScheduleWithDoctor = async (
+  patientId: string,
+  doctorId: string
+): Promise<{
+  canSchedule: boolean;
+  reason?: string;
+  existingAppointment?: any;
+}> => {
+  try {
+    // Verificar se o paciente já tem agendamento pendente com este profissional
+    const pendingAppointment = await prisma.appointment.findFirst({
+      where: {
+        patientId: patientId,
+        doctorId: doctorId,
+        status: {
+          in: ["scheduled", "confirmed"] // Agendamentos pendentes
+        }
+      },
+      select: {
+        id: true,
+        startTime: true,
+        endTime: true,
+        status: true,
+        doctor: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
+      }
+    });
+
+    if (pendingAppointment) {
+      return {
+        canSchedule: false,
+        reason: `Paciente já possui um agendamento pendente com ${pendingAppointment.doctor.name}`,
+        existingAppointment: pendingAppointment
+      };
+    }
+
+    return {
+      canSchedule: true
+    };
+  } catch (error) {
+    console.error("Erro ao verificar disponibilidade do paciente:", error);
+    return {
+      canSchedule: false,
+      reason: "Erro ao verificar disponibilidade"
+    };
+  }
 };
 
 // Buscar agendamentos do paciente
@@ -658,7 +733,11 @@ export async function cancelAppointmentByAttendant(
   }
 
   // Verificar se o agendamento pode ser cancelado
-  if (appointment.status === "completed" || appointment.status === "no_show" || appointment.status === "cancelled") {
+  if (
+    appointment.status === "completed" ||
+    appointment.status === "no_show" ||
+    appointment.status === "cancelled"
+  ) {
     throw new BadRequest(
       "Não é possível cancelar um agendamento finalizado ou já cancelado"
     );
@@ -667,7 +746,7 @@ export async function cancelAppointmentByAttendant(
   // Verificar se o agendamento é futuro
   const now = moment().tz(TIMEZONE);
   const appointmentTime = moment(appointment.startTime).tz(TIMEZONE);
-  
+
   if (appointmentTime.isBefore(now)) {
     throw new BadRequest(
       "Não é possível cancelar um agendamento que já passou"

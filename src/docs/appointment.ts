@@ -141,7 +141,13 @@ export class appointmentDocs {
         id: z.string().describe("ID do agendamento")
       }),
       body: z.object({
-        status: z.enum(["scheduled", "confirmed", "cancelled", "completed", "no_show"])
+        status: z.enum([
+          "scheduled",
+          "confirmed",
+          "cancelled",
+          "completed",
+          "no_show"
+        ])
       }),
       response: {
         200: z.object({
@@ -287,6 +293,68 @@ export class appointmentDocs {
         400: errorResponseSchema,
         401: errorResponseSchema,
         403: errorResponseSchema,
+        500: errorResponseSchema
+      }
+    }
+  };
+
+  static checkPatientDoctorAvailability = {
+    schema: {
+      tags: ["Appointment"],
+      summary: "Verificar se paciente pode agendar com profissional",
+      description:
+        "Verifica se um paciente pode agendar com um profissional específico (não pode ter agendamento pendente com o mesmo profissional)",
+      params: z.object({
+        patientId: z.string().describe("ID do paciente"),
+        doctorId: z.string().describe("ID do profissional")
+      }),
+      response: {
+        200: z.object({
+          status: z.literal("success"),
+          data: z.object({
+            canSchedule: z.boolean(),
+            reason: z.string().optional(),
+            existingAppointment: z
+              .object({
+                id: z.string(),
+                startTime: z.string(),
+                endTime: z.string(),
+                status: z.string(),
+                doctor: z.object({
+                  id: z.string(),
+                  name: z.string()
+                })
+              })
+              .optional()
+          })
+        }),
+        500: errorResponseSchema
+      }
+    }
+  };
+
+  static generateAvailableSlots = {
+    schema: {
+      tags: ["Appointment"],
+      summary: "Gerar horários disponíveis",
+      description:
+        "Gera horários disponíveis para um médico em uma data específica",
+      params: z.object({
+        doctorId: z.string().describe("ID do médico"),
+        date: z.string().describe("Data no formato YYYY-MM-DD")
+      }),
+      response: {
+        200: z.object({
+          status: z.literal("success"),
+          data: z.array(
+            z.object({
+              time: z.string(),
+              available: z.boolean()
+            })
+          )
+        }),
+        400: errorResponseSchema,
+        404: errorResponseSchema,
         500: errorResponseSchema
       }
     }

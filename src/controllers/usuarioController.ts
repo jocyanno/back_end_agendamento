@@ -12,6 +12,7 @@ import {
   getUserExisting,
   getUsuarioLogado,
   getUsuarioLogadoIsAdmin,
+  getUsuarioLogadoIsAdminOrAttendant,
   updateUser,
   updateUserByDoctor
 } from "@/service/usuarioService.service";
@@ -166,7 +167,7 @@ export async function getAllUsuarios(
   reply: FastifyReply
 ) {
   // Verificar se o usuário logado é doctor
-  await getUsuarioLogadoIsAdmin(request);
+  await getUsuarioLogadoIsAdminOrAttendant(request);
 
   const users = await getAllUsers();
 
