@@ -639,3 +639,56 @@ export async function deleteDoctorAvailability(
 
   return { message: "Disponibilidade deletada com sucesso" };
 }
+
+// Cancelar agendamento (attendant)
+export async function cancelAppointmentByAttendant(
+  appointmentId: string,
+  attendantId: string
+) {
+  const appointment = await prisma.appointment.findUnique({
+    where: { id: appointmentId },
+    include: {
+      patient: true,
+      doctor: true
+    }
+  });
+
+  if (!appointment) {
+    throw new NotFound("Agendamento não encontrado");
+  }
+
+  // Verificar se o agendamento pode ser cancelado
+  if (appointment.status === "completed" || appointment.status === "no_show" || appointment.status === "cancelled") {
+    throw new BadRequest(
+      "Não é possível cancelar um agendamento finalizado ou já cancelado"
+    );
+  }
+
+  // Verificar se o agendamento é futuro
+  const now = moment().tz(TIMEZONE);
+  const appointmentTime = moment(appointment.startTime).tz(TIMEZONE);
+  
+  if (appointmentTime.isBefore(now)) {
+    throw new BadRequest(
+      "Não é possível cancelar um agendamento que já passou"
+    );
+  }
+
+  // Verificar se o attendant tem permissão (pode cancelar qualquer agendamento)
+  // Esta verificação pode ser expandida para verificar se o attendant trabalha com o médico específico
+
+  const updatedAppointment = await prisma.appointment.update({
+    where: { id: appointmentId },
+    data: { status: "cancelled" },
+    select: selectAppointmentWithUsers
+  });
+
+  // Enviar notificação de cancelamento
+  try {
+    await sendAppointmentCancellation(updatedAppointment);
+  } catch (error) {
+    console.error("Erro ao enviar notificação de cancelamento:", error);
+  }
+
+  return updatedAppointment;
+}

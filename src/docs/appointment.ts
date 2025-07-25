@@ -135,13 +135,13 @@ export class appointmentDocs {
       tags: ["Appointment"],
       summary: "Atualizar status do agendamento",
       description:
-        "Atualiza o status de um agendamento. Cancelamentos devem ser feitos com 24h de antecedência.",
+        "Atualiza o status de um agendamento. Pacientes só podem alterar seus próprios agendamentos, médicos só podem alterar seus agendamentos.",
       headers: headersSchema,
       params: z.object({
         id: z.string().describe("ID do agendamento")
       }),
       body: z.object({
-        status: appointmentStatusEnum
+        status: z.enum(["scheduled", "confirmed", "cancelled", "completed", "no_show"])
       }),
       response: {
         200: z.object({
@@ -150,6 +150,31 @@ export class appointmentDocs {
         }),
         400: errorResponseSchema,
         401: errorResponseSchema,
+        404: errorResponseSchema,
+        500: errorResponseSchema
+      }
+    }
+  };
+
+  static cancelAppointmentByAttendant = {
+    preHandler: [autenticarToken],
+    schema: {
+      tags: ["Appointment"],
+      summary: "Cancelar agendamento (attendant)",
+      description:
+        "Permite que atendentes cancelem agendamentos. Não é possível cancelar agendamentos que já passaram ou foram finalizados.",
+      headers: headersSchema,
+      params: z.object({
+        appointmentId: z.string().describe("ID do agendamento a ser cancelado")
+      }),
+      response: {
+        200: z.object({
+          status: z.literal("success"),
+          data: responseAppointmentWithUsersSchema
+        }),
+        400: errorResponseSchema,
+        401: errorResponseSchema,
+        403: errorResponseSchema,
         404: errorResponseSchema,
         500: errorResponseSchema
       }

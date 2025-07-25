@@ -8,7 +8,8 @@ import {
   updateAppointmentStatus,
   createDoctorAvailability,
   getDoctorAvailability,
-  deleteDoctorAvailability
+  deleteDoctorAvailability,
+  cancelAppointmentByAttendant
 } from "@/service/appointmentService.service";
 import { AppointmentStatus } from "@prisma/client";
 import moment from "moment-timezone";
@@ -317,6 +318,56 @@ export async function deleteAvailability(
     }
 
     if (error.message?.includes("agendamentos futuros")) {
+      return reply.status(400).send({
+        status: "error",
+        message: error.message
+      });
+    }
+
+    return reply.status(500).send({
+      status: "error",
+      message: "Erro interno do servidor"
+    });
+  }
+}
+
+// Cancelar agendamento (attendant)
+export async function cancelAppointmentByAttendantController(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  try {
+    // Verificar se o usuário logado é attendant
+    const { id: attendantId, register } = (request as AuthenticatedRequest)
+      .usuario;
+
+    if (register !== "attendant") {
+      return reply.status(403).send({
+        status: "error",
+        message: "Apenas atendentes podem cancelar agendamentos"
+      });
+    }
+
+    const { appointmentId } = request.params as { appointmentId: string };
+
+    const cancelledAppointment = await cancelAppointmentByAttendant(
+      appointmentId,
+      attendantId
+    );
+
+    return reply.status(200).send({
+      status: "success",
+      data: cancelledAppointment
+    });
+  } catch (error: any) {
+    if (error.message?.includes("não encontrado")) {
+      return reply.status(404).send({
+        status: "error",
+        message: error.message
+      });
+    }
+
+    if (error.message?.includes("Não é possível cancelar")) {
       return reply.status(400).send({
         status: "error",
         message: error.message
