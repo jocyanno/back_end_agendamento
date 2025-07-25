@@ -118,13 +118,13 @@ appointmentDocs.putAppointmentStatus = {
     schema: {
         tags: ["Appointment"],
         summary: "Atualizar status do agendamento",
-        description: "Atualiza o status de um agendamento. Cancelamentos devem ser feitos com 24h de antecedência.",
+        description: "Atualiza o status de um agendamento. Pacientes só podem alterar seus próprios agendamentos, médicos só podem alterar seus agendamentos.",
         headers: scheme_1.headersSchema,
         params: v4_1.z.object({
             id: v4_1.z.string().describe("ID do agendamento")
         }),
         body: v4_1.z.object({
-            status: appointment_1.appointmentStatusEnum
+            status: v4_1.z.enum(["scheduled", "confirmed", "cancelled", "completed", "no_show"])
         }),
         response: {
             200: v4_1.z.object({
@@ -133,6 +133,29 @@ appointmentDocs.putAppointmentStatus = {
             }),
             400: errorResponseSchema,
             401: errorResponseSchema,
+            404: errorResponseSchema,
+            500: errorResponseSchema
+        }
+    }
+};
+appointmentDocs.cancelAppointmentByAttendant = {
+    preHandler: [auth_1.autenticarToken],
+    schema: {
+        tags: ["Appointment"],
+        summary: "Cancelar agendamento (attendant)",
+        description: "Permite que atendentes cancelem agendamentos. Não é possível cancelar agendamentos que já passaram ou foram finalizados.",
+        headers: scheme_1.headersSchema,
+        params: v4_1.z.object({
+            appointmentId: v4_1.z.string().describe("ID do agendamento a ser cancelado")
+        }),
+        response: {
+            200: v4_1.z.object({
+                status: v4_1.z.literal("success"),
+                data: appointment_1.responseAppointmentWithUsersSchema
+            }),
+            400: errorResponseSchema,
+            401: errorResponseSchema,
+            403: errorResponseSchema,
             404: errorResponseSchema,
             500: errorResponseSchema
         }
@@ -171,6 +194,33 @@ appointmentDocs.getAvailability = {
                 status: v4_1.z.literal("success"),
                 data: v4_1.z.array(appointment_1.responseAvailabilitySchema)
             }),
+            404: errorResponseSchema,
+            500: errorResponseSchema
+        }
+    }
+};
+appointmentDocs.deleteAvailability = {
+    preHandler: [auth_1.autenticarToken],
+    schema: {
+        tags: ["Availability"],
+        summary: "Deletar disponibilidade do médico",
+        description: "Deleta uma disponibilidade específica do médico logado. Não é possível deletar se houver agendamentos futuros.",
+        headers: scheme_1.headersSchema,
+        params: v4_1.z.object({
+            availabilityId: v4_1.z
+                .string()
+                .describe("ID da disponibilidade a ser deletada")
+        }),
+        response: {
+            200: v4_1.z.object({
+                status: v4_1.z.literal("success"),
+                data: v4_1.z.object({
+                    message: v4_1.z.string()
+                })
+            }),
+            400: errorResponseSchema,
+            401: errorResponseSchema,
+            403: errorResponseSchema,
             404: errorResponseSchema,
             500: errorResponseSchema
         }

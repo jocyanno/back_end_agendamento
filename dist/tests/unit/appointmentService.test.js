@@ -35,6 +35,7 @@ vitest_1.vi.mock("moment-timezone", () => ({
         format: vitest_1.vi.fn(() => "2024-01-01T08:00:00.000Z"),
         isBefore: vitest_1.vi.fn(() => false),
         isAfter: vitest_1.vi.fn(() => false),
+        isSame: vitest_1.vi.fn(() => false),
         isSameOrBefore: vitest_1.vi.fn(() => true),
         clone: vitest_1.vi.fn().mockReturnThis(),
         hour: vitest_1.vi.fn().mockReturnThis(),

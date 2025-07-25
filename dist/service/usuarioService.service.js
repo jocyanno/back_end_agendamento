@@ -17,6 +17,8 @@ exports.getAllDoctors = getAllDoctors;
 exports.getUsersByRegistrar = getUsersByRegistrar;
 exports.updateUserByDoctor = updateUserByDoctor;
 exports.deleteUser = deleteUser;
+exports.getPatientsByDoctor = getPatientsByDoctor;
+exports.createPatientForDoctor = createPatientForDoctor;
 const prisma_1 = require("../lib/prisma");
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const unauthorized_1 = require("../_errors/unauthorized");
@@ -142,6 +144,9 @@ async function createUser(data, registeredBy) {
     if (data.register === "doctor") {
         throw new bad_request_1.BadRequest("Register doctor is not allowed");
     }
+    if (!data.password) {
+        throw new bad_request_1.BadRequest("Password is required");
+    }
     const hashedPassword = await bcrypt_1.default.hash(data.password, 10);
     const user = await prisma_1.prisma.users.create({
         data: {
@@ -159,6 +164,9 @@ async function createUser(data, registeredBy) {
     return user;
 }
 async function createUserAdmin(data, registeredBy) {
+    if (!data.password) {
+        throw new bad_request_1.BadRequest("Password is required");
+    }
     const hashedPassword = await bcrypt_1.default.hash(data.password, 10);
     const user = await prisma_1.prisma.users.create({
         data: {
@@ -366,5 +374,51 @@ async function deleteUser(usuarioId, adminId) {
         }
     });
     return { message: "User deleted successfully" };
+}
+// Buscar pacientes de um médico específico (para attendant)
+async function getPatientsByDoctor(doctorId) {
+    const patients = await prisma_1.prisma.users.findMany({
+        where: {
+            register: "patient",
+            registeredBy: doctorId
+        },
+        select: exports.selectUsuario,
+        orderBy: {
+            name: "asc"
+        }
+    });
+    return patients;
+}
+// Criar paciente para um médico específico (para attendant)
+async function createPatientForDoctor(data, doctorId) {
+    if (!data.password) {
+        throw new bad_request_1.BadRequest("Password is required");
+    }
+    // Verificar se o médico existe
+    const doctor = await prisma_1.prisma.users.findUnique({
+        where: {
+            id: doctorId,
+            register: "doctor"
+        }
+    });
+    if (!doctor) {
+        throw new not_found_1.NotFound("Médico não encontrado");
+    }
+    const hashedPassword = await bcrypt_1.default.hash(data.password, 10);
+    const user = await prisma_1.prisma.users.create({
+        data: {
+            ...data,
+            register: "patient", // Forçar como paciente
+            birthDate: data.birthDate
+                ? (0, moment_timezone_1.default)(data.birthDate).isValid()
+                    ? (0, moment_timezone_1.default)(data.birthDate).toDate()
+                    : null
+                : null,
+            password: hashedPassword,
+            registeredBy: doctorId // Definir o médico como registrador
+        },
+        select: exports.selectUsuario
+    });
+    return user;
 }
 //# sourceMappingURL=usuarioService.service.js.map

@@ -20,7 +20,6 @@ export const responseUsuarioSchemaProps = {
   country: z.string().nullish(),
   cid: z.string().nullish(),
   register: schemaRegister,
-  registeredBy: z.string().nullish(),
   createdAt: z.coerce.string().or(z.date()).transform(formatDate).nullish(),
   updatedAt: z.coerce.string().or(z.date()).transform(formatDate).nullish()
 };
@@ -64,6 +63,5 @@ export const responseDoctorSchema = z.object({
   state: z.string().nullish(),
   cid: z.string().nullish(),
   register: schemaRegister,
-  registeredBy: z.string().nullish(),
   createdAt: z.coerce.string().or(z.date()).transform(formatDate).nullish()
 });

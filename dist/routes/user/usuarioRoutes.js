@@ -12,16 +12,22 @@ async function usuarioRoutes(app) {
         .get("/doctors", usuario_1.usuarioDocs.getDoctors, usuarioController_1.getDoctors);
     app
         .withTypeProvider()
+        .get("/users/form-data", usuario_1.usuarioDocs.getFormData, usuarioController_1.getFormData);
+    app
+        .withTypeProvider()
         .get("/users", usuario_1.usuarioDocs.getAllUsuarios, usuarioController_1.getAllUsuarios);
     app
         .withTypeProvider()
-        .get("/users/registrar/:registrarId", usuario_1.usuarioDocs.getUsuariosByRegistrar, usuarioController_1.getUsuariosByRegistrar);
+        .get("/users/registrar", usuario_1.usuarioDocs.getUsuariosByRegistrar, usuarioController_1.getUsuariosByRegistrar);
+    app
+        .withTypeProvider()
+        .get("/users/doctor/:doctorId/patients", usuario_1.usuarioDocs.getPacientesByDoctor, usuarioController_1.getPacientesByDoctor);
+    app
+        .withTypeProvider()
+        .post("/users/doctor/:doctorId/patients", usuario_1.usuarioDocs.createPacienteForDoctor, usuarioController_1.createPacienteForDoctor);
     app
         .withTypeProvider()
         .get("/users/:id", usuario_1.usuarioDocs.getUsuarioById, usuarioController_1.getUsuarioById);
-    app
-        .withTypeProvider()
-        .get("/users/registrar/:registrarId", usuario_1.usuarioDocs.getUsuariosByRegistrar, usuarioController_1.getUsuariosByRegistrar);
     app
         .withTypeProvider()
         .post("/user/login", usuario_1.usuarioDocs.loginUsuario, usuarioController_1.loginUsuario);

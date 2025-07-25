@@ -11,6 +11,8 @@ exports.postAvailability = postAvailability;
 exports.getAvailability = getAvailability;
 exports.getTodayAppointments = getTodayAppointments;
 exports.postAppointmentForPatient = postAppointmentForPatient;
+exports.deleteAvailability = deleteAvailability;
+exports.cancelAppointmentByAttendantController = cancelAppointmentByAttendantController;
 const appointmentService_service_1 = require("../service/appointmentService.service");
 const moment_timezone_1 = __importDefault(require("moment-timezone"));
 const prisma_1 = require("../lib/prisma");
@@ -190,5 +192,80 @@ async function postAppointmentForPatient(request, reply) {
         status: "success",
         data: appointment
     });
+}
+// Deletar disponibilidade (médico)
+async function deleteAvailability(request, reply) {
+    try {
+        const { id: doctorId, register } = request
+            .usuario;
+        if (register !== "doctor") {
+            return reply.status(403).send({
+                status: "error",
+                message: "Apenas médicos podem deletar disponibilidade"
+            });
+        }
+        const { availabilityId } = request.params;
+        const result = await (0, appointmentService_service_1.deleteDoctorAvailability)(availabilityId, doctorId);
+        return reply.status(200).send({
+            status: "success",
+            data: result
+        });
+    }
+    catch (error) {
+        if (error.message?.includes("não encontrada")) {
+            return reply.status(404).send({
+                status: "error",
+                message: error.message
+            });
+        }
+        if (error.message?.includes("agendamentos futuros")) {
+            return reply.status(400).send({
+                status: "error",
+                message: error.message
+            });
+        }
+        return reply.status(500).send({
+            status: "error",
+            message: "Erro interno do servidor"
+        });
+    }
+}
+// Cancelar agendamento (attendant)
+async function cancelAppointmentByAttendantController(request, reply) {
+    try {
+        // Verificar se o usuário logado é attendant
+        const { id: attendantId, register } = request
+            .usuario;
+        if (register !== "attendant") {
+            return reply.status(403).send({
+                status: "error",
+                message: "Apenas atendentes podem cancelar agendamentos"
+            });
+        }
+        const { appointmentId } = request.params;
+        const cancelledAppointment = await (0, appointmentService_service_1.cancelAppointmentByAttendant)(appointmentId, attendantId);
+        return reply.status(200).send({
+            status: "success",
+            data: cancelledAppointment
+        });
+    }
+    catch (error) {
+        if (error.message?.includes("não encontrado")) {
+            return reply.status(404).send({
+                status: "error",
+                message: error.message
+            });
+        }
+        if (error.message?.includes("Não é possível cancelar")) {
+            return reply.status(400).send({
+                status: "error",
+                message: error.message
+            });
+        }
+        return reply.status(500).send({
+            status: "error",
+            message: "Erro interno do servidor"
+        });
+    }
 }
 //# sourceMappingURL=appointmentController.js.map

@@ -159,10 +159,7 @@ export async function getUserExisting({
   return;
 }
 
-export async function createUser(
-  data: Prisma.UsersCreateInput,
-  registeredBy?: string
-) {
+export async function createUser(data: Prisma.UsersCreateInput) {
   if (data.register === "doctor") {
     throw new BadRequest("Register doctor is not allowed");
   }
@@ -181,8 +178,7 @@ export async function createUser(
           ? moment(data.birthDate).toDate()
           : null
         : null,
-      password: hashedPassword,
-      registeredBy: registeredBy || null
+      password: hashedPassword
     },
     select: selectUsuario
   });
@@ -190,10 +186,7 @@ export async function createUser(
   return user;
 }
 
-export async function createUserAdmin(
-  data: Prisma.UsersCreateInput,
-  registeredBy?: string
-) {
+export async function createUserAdmin(data: Prisma.UsersCreateInput) {
   if (!data.password) {
     throw new BadRequest("Password is required");
   }
@@ -208,8 +201,7 @@ export async function createUserAdmin(
           ? moment(data.birthDate).toDate()
           : null
         : null,
-      password: hashedPassword,
-      registeredBy: registeredBy || null
+      password: hashedPassword
     },
     select: selectUsuario
   });
@@ -336,18 +328,6 @@ export async function getAllDoctors() {
   return doctors;
 }
 
-export async function getUsersByRegistrar(registrarId: string) {
-  const users = await prisma.users.findMany({
-    where: {
-      registeredBy: registrarId
-    },
-    select: selectUsuario,
-    orderBy: [{ register: "desc" }, { name: "asc" }]
-  });
-
-  return users;
-}
-
 export async function updateUserByDoctor(
   targetUserId: string,
   data: Prisma.UsersUncheckedUpdateInput
@@ -452,59 +432,33 @@ export async function deleteUser(usuarioId: string, adminId: string) {
   return { message: "User deleted successfully" };
 }
 
-// Buscar pacientes de um médico específico (para attendant)
-export async function getPatientsByDoctor(doctorId: string) {
-  const patients = await prisma.users.findMany({
+// Buscar disponibilidades do médico
+export async function getDoctorAvailability(doctorId: string) {
+  const availabilities = await prisma.availability.findMany({
     where: {
-      register: "patient",
-      registeredBy: doctorId
+      doctorId,
+      isActive: true
     },
-    select: selectUsuario,
-    orderBy: {
-      name: "asc"
-    }
+    orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }]
   });
 
-  return patients;
+  return availabilities;
 }
 
-// Criar paciente para um médico específico (para attendant)
-export async function createPatientForDoctor(
-  data: Prisma.UsersCreateInput,
-  doctorId: string
-) {
-  if (!data.password) {
-    throw new BadRequest("Password is required");
-  }
+// Obter dados para formulário de criação de usuário
+export async function getFormData() {
+  // Buscar médicos disponíveis para o campo registeredBy
+  const doctors = await getAllDoctors();
 
-  // Verificar se o médico existe
-  const doctor = await prisma.users.findUnique({
-    where: {
-      id: doctorId,
-      register: "doctor"
-    }
-  });
+  // Definir tipos de registro disponíveis
+  const registerTypes = [
+    { value: "patient", label: "Paciente" },
+    { value: "parents", label: "Responsável" },
+    { value: "attendant", label: "Atendente" }
+  ];
 
-  if (!doctor) {
-    throw new NotFound("Médico não encontrado");
-  }
-
-  const hashedPassword = await bcrypt.hash(data.password, 10);
-
-  const user = await prisma.users.create({
-    data: {
-      ...data,
-      register: "patient", // Forçar como paciente
-      birthDate: data.birthDate
-        ? moment(data.birthDate).isValid()
-          ? moment(data.birthDate).toDate()
-          : null
-        : null,
-      password: hashedPassword,
-      registeredBy: doctorId // Definir o médico como registrador
-    },
-    select: selectUsuario
-  });
-
-  return user;
+  return {
+    doctors,
+    registerTypes
+  };
 }

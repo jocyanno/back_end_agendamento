@@ -133,14 +133,13 @@ async function main() {
       data: {
         ...pacienteData,
         password: defaultPassword,
-        register: "patient",
-        registeredBy: adminUser.id // Registrado pelo admin
+        register: "patient"
       }
     });
     createdPacientes.push(paciente);
   }
 
-  // Criar usuário responsável (parents) - registrado pelo admin
+  // Criar usuário responsável (parents)
   const responsavel = await prisma.users.create({
     data: {
       name: "Roberto Mendes",
@@ -156,8 +155,7 @@ async function main() {
       city: "Brasília",
       state: "DF",
       zipCode: "70000-789",
-      country: "Brasil",
-      registeredBy: adminUser.id // Registrado pelo admin
+      country: "Brasil"
     }
   });
 

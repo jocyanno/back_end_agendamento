@@ -11,6 +11,8 @@ exports.getDoctorAppointments = getDoctorAppointments;
 exports.updateAppointmentStatus = updateAppointmentStatus;
 exports.createDoctorAvailability = createDoctorAvailability;
 exports.getDoctorAvailability = getDoctorAvailability;
+exports.deleteDoctorAvailability = deleteDoctorAvailability;
+exports.cancelAppointmentByAttendant = cancelAppointmentByAttendant;
 const prisma_1 = require("../lib/prisma");
 const bad_request_1 = require("../_errors/bad-request");
 const not_found_1 = require("../_errors/not-found");
@@ -457,4 +459,91 @@ const getAppointmentById = async (appointmentId) => {
     }
 };
 exports.getAppointmentById = getAppointmentById;
+// Deletar disponibilidade do médico
+async function deleteDoctorAvailability(availabilityId, doctorId) {
+    // Verificar se a disponibilidade existe e pertence ao médico
+    const availability = await prisma_1.prisma.availability.findFirst({
+        where: {
+            id: availabilityId,
+            doctorId,
+            isActive: true
+        }
+    });
+    if (!availability) {
+        throw new not_found_1.NotFound("Disponibilidade não encontrada");
+    }
+    // Verificar se existem agendamentos futuros para esta disponibilidade
+    const dayOfWeek = availability.dayOfWeek;
+    const startTime = availability.startTime;
+    const endTime = availability.endTime;
+    // Buscar agendamentos futuros que possam estar usando esta disponibilidade
+    const futureAppointments = await prisma_1.prisma.appointment.findMany({
+        where: {
+            doctorId,
+            startTime: {
+                gte: new Date()
+            },
+            status: {
+                in: ["scheduled", "confirmed"]
+            }
+        }
+    });
+    // Verificar se há agendamentos que podem estar conflitando
+    const conflictingAppointments = futureAppointments.filter((appointment) => {
+        const appointmentDate = new Date(appointment.startTime);
+        const appointmentDayOfWeek = appointmentDate.getDay();
+        const appointmentTime = appointmentDate.toTimeString().slice(0, 5); // HH:mm
+        return (appointmentDayOfWeek === dayOfWeek &&
+            appointmentTime >= startTime &&
+            appointmentTime < endTime);
+    });
+    if (conflictingAppointments.length > 0) {
+        throw new bad_request_1.BadRequest("Não é possível deletar esta disponibilidade pois existem agendamentos futuros");
+    }
+    // Deletar a disponibilidade
+    await prisma_1.prisma.availability.delete({
+        where: {
+            id: availabilityId
+        }
+    });
+    return { message: "Disponibilidade deletada com sucesso" };
+}
+// Cancelar agendamento (attendant)
+async function cancelAppointmentByAttendant(appointmentId, attendantId) {
+    const appointment = await prisma_1.prisma.appointment.findUnique({
+        where: { id: appointmentId },
+        include: {
+            patient: true,
+            doctor: true
+        }
+    });
+    if (!appointment) {
+        throw new not_found_1.NotFound("Agendamento não encontrado");
+    }
+    // Verificar se o agendamento pode ser cancelado
+    if (appointment.status === "completed" || appointment.status === "no_show" || appointment.status === "cancelled") {
+        throw new bad_request_1.BadRequest("Não é possível cancelar um agendamento finalizado ou já cancelado");
+    }
+    // Verificar se o agendamento é futuro
+    const now = (0, moment_timezone_1.default)().tz(TIMEZONE);
+    const appointmentTime = (0, moment_timezone_1.default)(appointment.startTime).tz(TIMEZONE);
+    if (appointmentTime.isBefore(now)) {
+        throw new bad_request_1.BadRequest("Não é possível cancelar um agendamento que já passou");
+    }
+    // Verificar se o attendant tem permissão (pode cancelar qualquer agendamento)
+    // Esta verificação pode ser expandida para verificar se o attendant trabalha com o médico específico
+    const updatedAppointment = await prisma_1.prisma.appointment.update({
+        where: { id: appointmentId },
+        data: { status: "cancelled" },
+        select: exports.selectAppointmentWithUsers
+    });
+    // Enviar notificação de cancelamento
+    try {
+        await (0, notificationService_service_1.sendAppointmentCancellation)(updatedAppointment);
+    }
+    catch (error) {
+        console.error("Erro ao enviar notificação de cancelamento:", error);
+    }
+    return updatedAppointment;
+}
 //# sourceMappingURL=appointmentService.service.js.map

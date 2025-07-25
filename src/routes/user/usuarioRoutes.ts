@@ -8,12 +8,9 @@ import {
   getDoctors,
   getUsuario,
   getUsuarioById,
-  getUsuariosByRegistrar,
   loginUsuario,
   updateUsuario,
   updateUsuarioByDoctor,
-  getPacientesByDoctor,
-  createPacienteForDoctor,
   getFormData
 } from "@/controllers/usuarioController";
 import { usuarioDocs } from "@/docs/usuario";
@@ -34,30 +31,6 @@ export async function usuarioRoutes(app: FastifyInstance) {
   app
     .withTypeProvider<ZodTypeProvider>()
     .get("/users", usuarioDocs.getAllUsuarios, getAllUsuarios);
-
-  app
-    .withTypeProvider<ZodTypeProvider>()
-    .get(
-      "/users/registrar",
-      usuarioDocs.getUsuariosByRegistrar,
-      getUsuariosByRegistrar
-    );
-
-  app
-    .withTypeProvider<ZodTypeProvider>()
-    .get(
-      "/users/doctor/:doctorId/patients",
-      usuarioDocs.getPacientesByDoctor,
-      getPacientesByDoctor
-    );
-
-  app
-    .withTypeProvider<ZodTypeProvider>()
-    .post(
-      "/users/doctor/:doctorId/patients",
-      usuarioDocs.createPacienteForDoctor,
-      createPacienteForDoctor
-    );
 
   app
     .withTypeProvider<ZodTypeProvider>()

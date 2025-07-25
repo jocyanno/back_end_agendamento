@@ -14,6 +14,13 @@ function errorHandler(error, request, reply) {
             issues: error.flatten().fieldErrors
         });
     }
+    // Erro de body vazio com content-type JSON
+    if (error.code === "FST_ERR_CTP_EMPTY_JSON_BODY") {
+        return reply.status(400).send({
+            status: "error",
+            message: "Requisição inválida: não envie body em requisições GET ou DELETE"
+        });
+    }
     // Erros de validação do Fastify Schema
     if (error.code === "FST_ERR_VALIDATION") {
         if (error.validationContext === "headers" &&

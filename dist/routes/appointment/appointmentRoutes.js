@@ -23,6 +23,9 @@ async function appointmentRoutes(app) {
     app
         .withTypeProvider()
         .put("/appointments/:id/status", appointment_1.appointmentDocs.putAppointmentStatus, appointmentController_1.putAppointmentStatus);
+    app
+        .withTypeProvider()
+        .put("/appointments/:appointmentId/cancel", appointment_1.appointmentDocs.cancelAppointmentByAttendant, appointmentController_1.cancelAppointmentByAttendantController);
     // Rotas de disponibilidade
     app
         .withTypeProvider()
@@ -30,5 +33,8 @@ async function appointmentRoutes(app) {
     app
         .withTypeProvider()
         .get("/availability/:doctorId", appointment_1.appointmentDocs.getAvailability, appointmentController_1.getAvailability);
+    app
+        .withTypeProvider()
+        .delete("/availability/:availabilityId", appointment_1.appointmentDocs.deleteAvailability, appointmentController_1.deleteAvailability);
 }
 //# sourceMappingURL=appointmentRoutes.js.map

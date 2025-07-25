@@ -12,11 +12,9 @@ import {
   getUserExisting,
   getUsuarioLogado,
   getUsuarioLogadoIsAdmin,
-  getUsersByRegistrar,
   updateUser,
   updateUserByDoctor,
-  getPatientsByDoctor,
-  createPatientForDoctor
+  getFormData as getFormDataService
 } from "@/service/usuarioService.service";
 
 export async function getUsuario(request: FastifyRequest, reply: FastifyReply) {
@@ -88,11 +86,7 @@ export async function createUsuario(
       cpf: parseResult.cpf
     });
 
-    // Usar o registeredBy enviado no JSON ou undefined se não fornecido
-    const createUsuario = await createUser(
-      parseResult,
-      parseResult.registeredBy || undefined
-    );
+    const createUsuario = await createUser(parseResult);
 
     const token = request.server.jwt.sign(
       { userId: createUsuario.id, register: createUsuario.register },
@@ -130,8 +124,7 @@ export async function createUsuarioAdmin(
     cpf: parseResult.cpf
   });
 
-  // Passar o ID do admin como registeredBy
-  const createUsuario = await createUserAdmin(parseResult, admin.id);
+  const createUsuario = await createUserAdmin(parseResult);
 
   const token = request.server.jwt.sign(
     { userId: createUsuario.id, register: createUsuario.register },
@@ -201,22 +194,6 @@ export async function getUsuarioById(
   });
 }
 
-export async function getUsuariosByRegistrar(
-  request: FastifyRequest,
-  reply: FastifyReply
-) {
-  await getUsuarioLogadoIsAdmin(request);
-
-  const doctor = await getUsuarioLogadoIsAdmin(request);
-
-  const users = await getUsersByRegistrar(doctor.id);
-
-  return reply.status(200).send({
-    status: "success",
-    data: users
-  });
-}
-
 export async function updateUsuarioByDoctor(
   request: FastifyRequest,
   reply: FastifyReply
@@ -254,94 +231,17 @@ export async function deleteUsuario(
   });
 }
 
-// Buscar pacientes de um médico (attendant)
-export async function getPacientesByDoctor(
-  request: FastifyRequest,
-  reply: FastifyReply
-) {
-  // Verificar se o usuário logado é attendant
-  const attendant = await getUsuarioLogado(request);
-
-  if (attendant.register !== "attendant") {
-    return reply.status(403).send({
-      status: "error",
-      message: "Apenas atendentes podem acessar esta rota"
-    });
-  }
-
-  const { doctorId } = request.params as { doctorId: string };
-
-  const patients = await getPatientsByDoctor(doctorId);
-
-  return reply.status(200).send({
-    status: "success",
-    data: patients
-  });
-}
-
-// Criar paciente para um médico (attendant)
-export async function createPacienteForDoctor(
-  request: FastifyRequest,
-  reply: FastifyReply
-) {
-  try {
-    // Verificar se o usuário logado é attendant
-    const attendant = await getUsuarioLogado(request);
-
-    if (attendant.register !== "attendant") {
-      return reply.status(403).send({
-        status: "error",
-        message: "Apenas atendentes podem criar pacientes"
-      });
-    }
-
-    const { doctorId } = request.params as { doctorId: string };
-    const parseResult = request.body as Prisma.UsersCreateInput;
-
-    console.log("Dados recebidos:", JSON.stringify(parseResult, null, 2));
-
-    await getUserExisting({
-      email: parseResult.email,
-      cpf: parseResult.cpf
-    });
-
-    const createPaciente = await createPatientForDoctor(parseResult, doctorId);
-
-    return reply.status(201).send({
-      status: "success",
-      data: { paciente: createPaciente }
-    });
-  } catch (error) {
-    console.error("Erro na criação de paciente:", error);
-    return reply.status(400).send({
-      status: "error",
-      message: error instanceof Error ? error.message : "Validation error"
-    });
-  }
-}
-
 // Obter dados para formulário de criação de usuário
 export async function getFormData(
   request: FastifyRequest,
   reply: FastifyReply
 ) {
   try {
-    // Buscar médicos disponíveis para o campo registeredBy
-    const doctors = await getAllDoctors();
-
-    // Definir tipos de registro disponíveis
-    const registerTypes = [
-      { value: "patient", label: "Paciente" },
-      { value: "parents", label: "Responsável" },
-      { value: "attendant", label: "Atendente" }
-    ];
+    const formData = await getFormDataService();
 
     return reply.status(200).send({
       status: "success",
-      data: {
-        doctors,
-        registerTypes
-      }
+      data: formData
     });
   } catch (error) {
     console.error("Erro ao buscar dados do formulário:", error);

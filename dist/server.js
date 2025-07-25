@@ -50,7 +50,10 @@ const app = (0, fastify_1.default)({
     logger: false,
     serializerOpts: {
         rounding: "floor"
-    }
+    },
+    // Configuração para lidar com content-type e body
+    bodyLimit: 1048576, // 1MB
+    trustProxy: true
 });
 app.register(cors_1.default, {
     origin: "*",

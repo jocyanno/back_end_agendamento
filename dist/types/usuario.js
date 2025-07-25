@@ -29,13 +29,11 @@ exports.responseUsuarioSchema = v4_1.z.object(exports.responseUsuarioSchemaProps
 exports.requestUsuarioSchema = exports.responseUsuarioSchema
     .omit({
     id: true,
-    birthDate: true,
     createdAt: true,
     updatedAt: true
 })
     .extend({
-    password: v4_1.z.string().min(8, "A senha deve ter pelo menos 8 caracteres"),
-    birthDate: v4_1.z.coerce.string().nullish()
+    password: v4_1.z.string().describe("Senha obrigatória para criação do usuário")
 });
 exports.editUsuarioSchema = exports.requestUsuarioSchema.partial();
 // Schema específico para edição de usuário pelo admin (doctor)
