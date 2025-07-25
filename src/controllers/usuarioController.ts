@@ -13,8 +13,7 @@ import {
   getUsuarioLogado,
   getUsuarioLogadoIsAdmin,
   updateUser,
-  updateUserByDoctor,
-  getFormData as getFormDataService
+  updateUserByDoctor
 } from "@/service/usuarioService.service";
 
 export async function getUsuario(request: FastifyRequest, reply: FastifyReply) {
@@ -229,25 +228,4 @@ export async function deleteUsuario(
     status: "success",
     data: result
   });
-}
-
-// Obter dados para formulário de criação de usuário
-export async function getFormData(
-  request: FastifyRequest,
-  reply: FastifyReply
-) {
-  try {
-    const formData = await getFormDataService();
-
-    return reply.status(200).send({
-      status: "success",
-      data: formData
-    });
-  } catch (error) {
-    console.error("Erro ao buscar dados do formulário:", error);
-    return reply.status(500).send({
-      status: "error",
-      message: "Erro interno do servidor"
-    });
-  }
 }

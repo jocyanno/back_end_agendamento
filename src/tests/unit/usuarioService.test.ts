@@ -67,7 +67,6 @@ describe("usuarioService", () => {
         zipCode: null,
         country: null,
         cid: null,
-        registeredBy: null,
         createdAt: new Date(),
         updatedAt: new Date()
       };
@@ -125,7 +124,6 @@ describe("usuarioService", () => {
         zipCode: null,
         country: null,
         cid: null,
-        registeredBy: null,
         createdAt: new Date(),
         updatedAt: new Date()
       };
@@ -167,7 +165,6 @@ describe("usuarioService", () => {
         zipCode: null,
         country: null,
         cid: null,
-        registeredBy: null,
         createdAt: new Date(),
         updatedAt: new Date()
       };
@@ -228,7 +225,6 @@ describe("usuarioService", () => {
         zipCode: null,
         country: null,
         cid: null,
-        registeredBy: null,
         createdAt: new Date(),
         updatedAt: new Date()
       };
@@ -274,7 +270,6 @@ describe("usuarioService", () => {
         zipCode: null,
         country: null,
         cid: null,
-        registeredBy: null,
         createdAt: new Date(),
         updatedAt: new Date()
       };
@@ -329,7 +324,6 @@ describe("usuarioService", () => {
         zipCode: null,
         country: null,
         cid: null,
-        registeredBy: null,
         createdAt: new Date(),
         updatedAt: new Date()
       };
@@ -367,7 +361,6 @@ describe("usuarioService", () => {
         zipCode: null,
         country: null,
         cid: null,
-        registeredBy: null,
         createdAt: new Date(),
         updatedAt: new Date()
       };
@@ -406,7 +399,6 @@ describe("usuarioService", () => {
         zipCode: null,
         country: null,
         cid: null,
-        registeredBy: null,
         createdAt: new Date(),
         updatedAt: new Date()
       };

@@ -42,7 +42,6 @@ exports.selectUsuario = {
     country: true,
     cid: true,
     register: true,
-    registeredBy: true,
     createdAt: true,
     updatedAt: true
 };
@@ -140,7 +139,7 @@ async function getUserExisting({ email, cpf }) {
     }
     return;
 }
-async function createUser(data, registeredBy) {
+async function createUser(data) {
     if (data.register === "doctor") {
         throw new bad_request_1.BadRequest("Register doctor is not allowed");
     }
@@ -157,13 +156,12 @@ async function createUser(data, registeredBy) {
                     : null
                 : null,
             password: hashedPassword,
-            registeredBy: registeredBy || null
         },
         select: exports.selectUsuario
     });
     return user;
 }
-async function createUserAdmin(data, registeredBy) {
+async function createUserAdmin(data) {
     if (!data.password) {
         throw new bad_request_1.BadRequest("Password is required");
     }
@@ -176,8 +174,7 @@ async function createUserAdmin(data, registeredBy) {
                     ? (0, moment_timezone_1.default)(data.birthDate).toDate()
                     : null
                 : null,
-            password: hashedPassword,
-            registeredBy: registeredBy || null
+            password: hashedPassword
         },
         select: exports.selectUsuario
     });
@@ -271,7 +268,6 @@ async function getAllDoctors() {
             state: true,
             cid: true,
             register: true,
-            registeredBy: true,
             createdAt: true
         },
         orderBy: {
@@ -279,16 +275,6 @@ async function getAllDoctors() {
         }
     });
     return doctors;
-}
-async function getUsersByRegistrar(registrarId) {
-    const users = await prisma_1.prisma.users.findMany({
-        where: {
-            registeredBy: registrarId
-        },
-        select: exports.selectUsuario,
-        orderBy: [{ register: "desc" }, { name: "asc" }]
-    });
-    return users;
 }
 async function updateUserByDoctor(targetUserId, data) {
     // Esta é a única função que permite alterar o campo 'cid'
@@ -375,20 +361,6 @@ async function deleteUser(usuarioId, adminId) {
     });
     return { message: "User deleted successfully" };
 }
-// Buscar pacientes de um médico específico (para attendant)
-async function getPatientsByDoctor(doctorId) {
-    const patients = await prisma_1.prisma.users.findMany({
-        where: {
-            register: "patient",
-            registeredBy: doctorId
-        },
-        select: exports.selectUsuario,
-        orderBy: {
-            name: "asc"
-        }
-    });
-    return patients;
-}
 // Criar paciente para um médico específico (para attendant)
 async function createPatientForDoctor(data, doctorId) {
     if (!data.password) {
@@ -415,7 +387,6 @@ async function createPatientForDoctor(data, doctorId) {
                     : null
                 : null,
             password: hashedPassword,
-            registeredBy: doctorId // Definir o médico como registrador
         },
         select: exports.selectUsuario
     });

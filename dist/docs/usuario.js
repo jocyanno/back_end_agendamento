@@ -216,7 +216,7 @@ usuarioDocs.postUsuario = {
     schema: {
         tags: ["Usuario"],
         summary: "Criar um novo usuário",
-        description: "Cria um novo usuário. O campo registeredBy é opcional e pode ser usado para indicar quem registrou o usuário.",
+        description: "Cria um novo usuário",
         body: usuario_1.requestUsuarioSchema,
         response: {
             200: v4_1.z.object({

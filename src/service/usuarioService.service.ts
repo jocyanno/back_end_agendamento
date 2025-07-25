@@ -25,7 +25,6 @@ export const selectUsuario = {
   country: true,
   cid: true,
   register: true,
-  registeredBy: true,
   createdAt: true,
   updatedAt: true
 };
@@ -317,7 +316,6 @@ export async function getAllDoctors() {
       state: true,
       cid: true,
       register: true,
-      registeredBy: true,
       createdAt: true
     },
     orderBy: {
@@ -443,22 +441,4 @@ export async function getDoctorAvailability(doctorId: string) {
   });
 
   return availabilities;
-}
-
-// Obter dados para formulário de criação de usuário
-export async function getFormData() {
-  // Buscar médicos disponíveis para o campo registeredBy
-  const doctors = await getAllDoctors();
-
-  // Definir tipos de registro disponíveis
-  const registerTypes = [
-    { value: "patient", label: "Paciente" },
-    { value: "parents", label: "Responsável" },
-    { value: "attendant", label: "Atendente" }
-  ];
-
-  return {
-    doctors,
-    registerTypes
-  };
 }

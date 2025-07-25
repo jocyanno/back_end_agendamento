@@ -37,36 +37,12 @@ export class usuarioDocs {
   static getDoctors = {
     schema: {
       tags: ["Usuario"],
-      summary: "Listar médicos disponíveis",
+      summary: "Listar todos os médicos",
       description: "Retorna todos os médicos cadastrados no sistema",
       response: {
         200: z.object({
           status: z.literal("success"),
           data: z.array(responseDoctorSchema)
-        }),
-        500: errorResponseSchema
-      }
-    }
-  };
-
-  static getFormData = {
-    schema: {
-      tags: ["Usuario"],
-      summary: "Obter dados para formulário de criação de usuário",
-      description:
-        "Retorna médicos e tipos de registro disponíveis para o formulário",
-      response: {
-        200: z.object({
-          status: z.literal("success"),
-          data: z.object({
-            doctors: z.array(responseDoctorSchema),
-            registerTypes: z.array(
-              z.object({
-                value: z.string(),
-                label: z.string()
-              })
-            )
-          })
         }),
         500: errorResponseSchema
       }
@@ -168,8 +144,7 @@ export class usuarioDocs {
     schema: {
       tags: ["Usuario"],
       summary: "Criar um novo usuário",
-      description:
-        "Cria um novo usuário. O campo registeredBy é opcional e pode ser usado para indicar quem registrou o usuário.",
+      description: "Cria um novo usuário",
       body: requestUsuarioSchema,
       response: {
         200: z.object({
