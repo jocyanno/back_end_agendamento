@@ -196,8 +196,14 @@ function debugSlotGeneration(
 
 // Gerar slots disponíveis para um dia
 export async function generateAvailableSlots(doctorId: string, date: string) {
+  console.log(`\n=== INICIANDO GERAÇÃO DE SLOTS ===`);
+  console.log(`Data solicitada: ${date}`);
+  console.log(`Médico ID: ${doctorId}`);
+
   const requestedDate = moment(date).tz(TIMEZONE);
   const dayOfWeek = requestedDate.day();
+
+  console.log(`Dia da semana: ${dayOfWeek} (${requestedDate.format("dddd")})`);
 
   // Buscar disponibilidade do médico para o dia da semana
   const availability = await prisma.availability.findFirst({
@@ -208,7 +214,17 @@ export async function generateAvailableSlots(doctorId: string, date: string) {
     }
   });
 
+  console.log(`Disponibilidade encontrada:`, availability ? "SIM" : "NÃO");
+  if (availability) {
+    console.log(
+      `   Horário: ${availability.startTime} - ${availability.endTime}`
+    );
+    console.log(`   ID: ${availability.id}`);
+  }
+
   if (!availability) {
+    console.log(`❌ NENHUMA DISPONIBILIDADE CONFIGURADA PARA ESTE DIA`);
+    console.log(`=== FIM GERAÇÃO DE SLOTS ===\n`);
     return [];
   }
 
@@ -256,6 +272,20 @@ export async function generateAvailableSlots(doctorId: string, date: string) {
     .split(":")
     .map(Number);
 
+  console.log(`\n📅 CONFIGURAÇÃO DE HORÁRIOS:`);
+  console.log(
+    `   Início disponibilidade: ${availStartHour}:${availStartMin
+      .toString()
+      .padStart(2, "0")}`
+  );
+  console.log(
+    `   Fim disponibilidade: ${availEndHour}:${availEndMin
+      .toString()
+      .padStart(2, "0")}`
+  );
+  console.log(`   Duração da sessão: ${SESSION_DURATION_MINUTES} minutos`);
+  console.log(`   Intervalo entre sessões: ${BREAK_DURATION_MINUTES} minutos`);
+
   // Determinar o horário de início
   const startHour = availStartHour;
   const startMin = availStartMin;
@@ -270,6 +300,11 @@ export async function generateAvailableSlots(doctorId: string, date: string) {
   // Se for hoje e o horário de início já passou, começar pelo próximo slot disponível
   const now = moment().tz(TIMEZONE);
   const isToday = requestedDate.isSame(now, "day");
+
+  console.log(`\n⏰ VERIFICAÇÃO DE HORÁRIO:`);
+  console.log(`   É hoje? ${isToday}`);
+  console.log(`   Horário atual: ${now.format("HH:mm")}`);
+  console.log(`   Primeiro slot calculado: ${currentSlot.format("HH:mm")}`);
 
   if (isToday && currentSlot.isBefore(now)) {
     // Começar pelo próximo horário redondo disponível
@@ -290,6 +325,8 @@ export async function generateAvailableSlots(doctorId: string, date: string) {
     ) {
       currentSlot = requestedDate.clone().hour(startHour).minute(startMin);
     }
+
+    console.log(`   ⚠️  Horário ajustado para: ${currentSlot.format("HH:mm")}`);
   }
 
   // Debug dos horários (descomentar apenas para debug)
@@ -305,10 +342,28 @@ export async function generateAvailableSlots(doctorId: string, date: string) {
     ? availEndTime
     : serviceEndTime;
 
+  console.log(`\n🔄 INICIANDO LOOP DE GERAÇÃO DE SLOTS:`);
+  console.log(
+    `   Horário de fim da disponibilidade: ${availEndTime.format("HH:mm")}`
+  );
+  console.log(
+    `   Horário de fim do serviço: ${serviceEndTime.format("HH:mm")}`
+  );
+  console.log(`   Horário de fim usado: ${endTime.format("HH:mm")}`);
+  console.log(`   Slot inicial: ${currentSlot.format("HH:mm")}`);
+
+  let slotCount = 0;
   while (currentSlot.isBefore(endTime)) {
+    slotCount++;
     const slotEnd = currentSlot
       .clone()
       .add(SESSION_DURATION_MINUTES, "minutes");
+
+    console.log(
+      `\n   📍 Slot ${slotCount}: ${currentSlot.format(
+        "HH:mm"
+      )} - ${slotEnd.format("HH:mm")}`
+    );
 
     // Verificar se o slot não conflita com agendamentos existentes
     const conflictingAppointment = existingAppointments.find((appointment) => {
@@ -333,16 +388,12 @@ export async function generateAvailableSlots(doctorId: string, date: string) {
     // Debug: Log de slots conflitantes
     if (!isAvailable && conflictingAppointment) {
       console.log(
-        `❌ SLOT CONFLITANTE: ${currentSlot.format("HH:mm")} - ${slotEnd.format(
-          "HH:mm"
-        )}`
+        `     ❌ CONFLITO: Conflita com agendamento ${conflictingAppointment.id}`
       );
       console.log(
-        `   Conflita com: ${moment(conflictingAppointment.startTime).format(
+        `        Agendamento: ${moment(conflictingAppointment.startTime).format(
           "HH:mm"
-        )} - ${moment(conflictingAppointment.endTime).format("HH:mm")} (${
-          conflictingAppointment.status
-        })`
+        )} - ${moment(conflictingAppointment.endTime).format("HH:mm")}`
       );
     }
 
@@ -350,6 +401,16 @@ export async function generateAvailableSlots(doctorId: string, date: string) {
     // Se for hoje, verificar se o horário já passou
     // Se for dia futuro, todos os horários são válidos
     const isPastSlot = isToday && currentSlot.isBefore(now);
+
+    if (isPastSlot) {
+      console.log(`     ⏰ PASSADO: Slot já passou`);
+    }
+
+    console.log(
+      `     Status: ${
+        isAvailable && !isPastSlot ? "✅ DISPONÍVEL" : "❌ INDISPONÍVEL"
+      }`
+    );
 
     if (isAvailable && !isPastSlot && slotEnd.isSameOrBefore(endTime)) {
       // Criar horário UTC com o valor do horário brasileiro
@@ -399,10 +460,14 @@ export async function generateAvailableSlots(doctorId: string, date: string) {
   // Exemplo: 08:00 BRT = 08:00 UTC (2025-07-03T08:00:00.000Z)
 
   // Debug: Resumo final
+  console.log(`\n📊 RESUMO FINAL:`);
+  console.log(`   Total de slots verificados: ${slotCount}`);
+  console.log(`   Slots disponíveis gerados: ${slots.length}`);
   console.log(
-    `📊 RESUMO: ${slots.length} slots disponíveis gerados para ${date}`
+    `   Slots disponíveis:`,
+    slots.map((slot) => moment(slot.startTime).format("HH:mm")).join(", ")
   );
-  console.log("==========================================");
+  console.log(`=== FIM GERAÇÃO DE SLOTS ===\n`);
 
   return slots;
 }
