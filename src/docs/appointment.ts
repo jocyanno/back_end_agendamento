@@ -298,6 +298,35 @@ export class appointmentDocs {
     }
   };
 
+  static getUserAppointments = {
+    preHandler: [autenticarToken],
+    schema: {
+      tags: ["Appointment"],
+      summary: "Buscar agendamentos de um usuário (atendente)",
+      description:
+        "Permite que atendentes busquem agendamentos de um usuário específico pelo ID",
+      headers: headersSchema,
+      params: z.object({
+        userId: z.string().describe("ID do usuário")
+      }),
+      querystring: z.object({
+        status: z
+          .enum(["scheduled", "confirmed", "completed", "cancelled", "no_show"])
+          .optional()
+          .describe("Filtrar por status do agendamento")
+      }),
+      response: {
+        200: z.object({
+          status: z.literal("success"),
+          data: z.array(responseAppointmentWithUsersSchema)
+        }),
+        401: errorResponseSchema,
+        403: errorResponseSchema,
+        500: errorResponseSchema
+      }
+    }
+  };
+
   static checkPatientDoctorAvailability = {
     schema: {
       tags: ["Appointment"],

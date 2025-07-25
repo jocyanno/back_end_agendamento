@@ -382,6 +382,42 @@ export async function cancelAppointmentByAttendantController(
   }
 }
 
+// Buscar agendamentos de um usuário específico (para atendente)
+export async function getUserAppointments(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  try {
+    // Verificar se o usuário logado é atendente
+    const { id: attendantId, register } = (request as AuthenticatedRequest)
+      .usuario;
+
+    if (register !== "attendant") {
+      return reply.status(403).send({
+        status: "error",
+        message: "Apenas atendentes podem acessar esta rota"
+      });
+    }
+
+    const { userId } = request.params as { userId: string };
+    const { status } = request.query as { status?: AppointmentStatus };
+
+    // Buscar agendamentos do usuário
+    const appointments = await getPatientAppointments(userId, status);
+
+    return reply.status(200).send({
+      status: "success",
+      data: appointments
+    });
+  } catch (error) {
+    console.error("Erro ao buscar agendamentos do usuário:", error);
+    return reply.status(500).send({
+      status: "error",
+      message: "Erro interno do servidor"
+    });
+  }
+}
+
 // Verificar se o paciente pode agendar com um profissional específico
 export async function checkPatientDoctorAvailability(
   request: FastifyRequest,

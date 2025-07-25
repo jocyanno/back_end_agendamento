@@ -11,7 +11,8 @@ import {
   getTodayAppointments,
   deleteAvailability,
   cancelAppointmentByAttendantController,
-  checkPatientDoctorAvailability
+  checkPatientDoctorAvailability,
+  getUserAppointments
 } from "@/controllers/appointmentController";
 import { appointmentDocs } from "@/docs/appointment";
 
@@ -43,6 +44,14 @@ export async function appointmentRoutes(app: FastifyInstance) {
       "/appointments/my",
       appointmentDocs.getMyAppointments,
       getMyAppointments
+    );
+
+  app
+    .withTypeProvider<ZodTypeProvider>()
+    .get(
+      "/appointments/user/:userId",
+      appointmentDocs.getUserAppointments,
+      getUserAppointments
     );
 
   app
