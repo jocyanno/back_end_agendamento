@@ -14,7 +14,9 @@ import {
   getUsuarioLogadoIsAdmin,
   getUsersByRegistrar,
   updateUser,
-  updateUserByDoctor
+  updateUserByDoctor,
+  getPatientsByDoctor,
+  createPatientForDoctor
 } from "@/service/usuarioService.service";
 
 export async function getUsuario(request: FastifyRequest, reply: FastifyReply) {
@@ -219,4 +221,70 @@ export async function deleteUsuario(
     status: "success",
     data: result
   });
+}
+
+// Buscar pacientes de um médico (attendant)
+export async function getPacientesByDoctor(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  // Verificar se o usuário logado é attendant
+  const attendant = await getUsuarioLogado(request);
+
+  if (attendant.register !== "attendant") {
+    return reply.status(403).send({
+      status: "error",
+      message: "Apenas atendentes podem acessar esta rota"
+    });
+  }
+
+  const { doctorId } = request.params as { doctorId: string };
+
+  const patients = await getPatientsByDoctor(doctorId);
+
+  return reply.status(200).send({
+    status: "success",
+    data: patients
+  });
+}
+
+// Criar paciente para um médico (attendant)
+export async function createPacienteForDoctor(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  try {
+    // Verificar se o usuário logado é attendant
+    const attendant = await getUsuarioLogado(request);
+
+    if (attendant.register !== "attendant") {
+      return reply.status(403).send({
+        status: "error",
+        message: "Apenas atendentes podem criar pacientes"
+      });
+    }
+
+    const { doctorId } = request.params as { doctorId: string };
+    const parseResult = request.body as Prisma.UsersCreateInput;
+
+    console.log("Dados recebidos:", JSON.stringify(parseResult, null, 2));
+
+    await getUserExisting({
+      email: parseResult.email,
+      cpf: parseResult.cpf
+    });
+
+    const createPaciente = await createPatientForDoctor(parseResult, doctorId);
+
+    return reply.status(201).send({
+      status: "success",
+      data: { paciente: createPaciente }
+    });
+  } catch (error) {
+    console.error("Erro na criação de paciente:", error);
+    return reply.status(400).send({
+      status: "error",
+      message: error instanceof Error ? error.message : "Validation error"
+    });
+  }
 }

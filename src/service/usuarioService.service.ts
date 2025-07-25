@@ -451,3 +451,60 @@ export async function deleteUser(usuarioId: string, adminId: string) {
 
   return { message: "User deleted successfully" };
 }
+
+// Buscar pacientes de um médico específico (para attendant)
+export async function getPatientsByDoctor(doctorId: string) {
+  const patients = await prisma.users.findMany({
+    where: {
+      register: "patient",
+      registeredBy: doctorId
+    },
+    select: selectUsuario,
+    orderBy: {
+      name: "asc"
+    }
+  });
+
+  return patients;
+}
+
+// Criar paciente para um médico específico (para attendant)
+export async function createPatientForDoctor(
+  data: Prisma.UsersCreateInput,
+  doctorId: string
+) {
+  if (!data.password) {
+    throw new BadRequest("Password is required");
+  }
+
+  // Verificar se o médico existe
+  const doctor = await prisma.users.findUnique({
+    where: {
+      id: doctorId,
+      register: "doctor"
+    }
+  });
+
+  if (!doctor) {
+    throw new NotFound("Médico não encontrado");
+  }
+
+  const hashedPassword = await bcrypt.hash(data.password, 10);
+
+  const user = await prisma.users.create({
+    data: {
+      ...data,
+      register: "patient", // Forçar como paciente
+      birthDate: data.birthDate
+        ? moment(data.birthDate).isValid()
+          ? moment(data.birthDate).toDate()
+          : null
+        : null,
+      password: hashedPassword,
+      registeredBy: doctorId // Definir o médico como registrador
+    },
+    select: selectUsuario
+  });
+
+  return user;
+}

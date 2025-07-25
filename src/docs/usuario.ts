@@ -89,6 +89,57 @@ export class usuarioDocs {
     }
   };
 
+  static getPacientesByDoctor = {
+    preHandler: [autenticarToken],
+    schema: {
+      tags: ["Usuario"],
+      summary: "Listar pacientes de um médico (attendant)",
+      description:
+        "Retorna todos os pacientes registrados por um médico específico (apenas atendentes podem acessar)",
+      headers: headersSchema,
+      params: z.object({
+        doctorId: z.string().describe("ID do médico")
+      }),
+      response: {
+        200: z.object({
+          status: z.literal("success"),
+          data: z.array(responseUsuarioSchema)
+        }),
+        401: errorResponseSchema,
+        403: errorResponseSchema,
+        500: errorResponseSchema
+      }
+    }
+  };
+
+  static createPacienteForDoctor = {
+    preHandler: [autenticarToken],
+    schema: {
+      tags: ["Usuario"],
+      summary: "Criar paciente para um médico (attendant)",
+      description:
+        "Permite que atendentes criem pacientes para um médico específico. O paciente será automaticamente registrado pelo médico.",
+      headers: headersSchema,
+      params: z.object({
+        doctorId: z.string().describe("ID do médico")
+      }),
+      body: requestUsuarioSchema,
+      response: {
+        201: z.object({
+          status: z.literal("success"),
+          data: z.object({
+            paciente: responseUsuarioSchema
+          })
+        }),
+        400: errorResponseSchema,
+        401: errorResponseSchema,
+        403: errorResponseSchema,
+        404: errorResponseSchema,
+        500: errorResponseSchema
+      }
+    }
+  };
+
   static getUsuarioById = {
     preHandler: [autenticarToken],
     schema: {
