@@ -54,6 +54,45 @@ export async function postAppointment(
   });
 }
 
+// Buscar horários disponíveis por período (compatibilidade com frontend)
+export async function getAvailableSlotsByPeriod(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  try {
+    const { startDate, endDate, doctorId } = request.query as {
+      startDate: string;
+      endDate: string;
+      doctorId?: string;
+    };
+
+    // Se não forneceu doctorId, retornar erro
+    if (!doctorId) {
+      return reply.status(400).send({
+        status: "error",
+        message: "doctorId é obrigatório"
+      });
+    }
+
+    // Converter startDate para formato de data (YYYY-MM-DD)
+    const date = moment(startDate).format("YYYY-MM-DD");
+
+    // Usar a função existente para gerar slots
+    const slots = await generateAvailableSlots(doctorId, date);
+
+    return reply.status(200).send({
+      status: "success",
+      data: slots
+    });
+  } catch (error) {
+    console.error("Erro ao buscar horários disponíveis:", error);
+    return reply.status(500).send({
+      status: "error",
+      message: "Erro interno do servidor"
+    });
+  }
+}
+
 // Buscar horários disponíveis
 export async function getAvailableSlots(
   request: FastifyRequest,

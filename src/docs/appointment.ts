@@ -81,6 +81,34 @@ export class appointmentDocs {
     }
   };
 
+  static getAvailableSlotsByPeriod = {
+    schema: {
+      tags: ["Appointment"],
+      summary: "Buscar horários disponíveis por período",
+      description:
+        "Retorna os horários disponíveis de um médico em uma data específica usando startDate e endDate (compatibilidade com frontend)",
+      querystring: z.object({
+        startDate: z.string().describe("Data de início no formato ISO"),
+        endDate: z.string().describe("Data de fim no formato ISO"),
+        doctorId: z.string().describe("ID do médico")
+      }),
+      response: {
+        200: z.object({
+          status: z.literal("success"),
+          data: z.array(
+            z.object({
+              startTime: z.string(),
+              endTime: z.string(),
+              available: z.boolean()
+            })
+          )
+        }),
+        400: errorResponseSchema,
+        500: errorResponseSchema
+      }
+    }
+  };
+
   static getAvailableSlots = {
     schema: {
       tags: ["Appointment"],

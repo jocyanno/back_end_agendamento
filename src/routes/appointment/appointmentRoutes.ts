@@ -4,6 +4,7 @@ import {
   postAppointment,
   postAppointmentForPatient,
   getAvailableSlots,
+  getAvailableSlotsByPeriod,
   getMyAppointments,
   putAppointmentStatus,
   postAvailability,
@@ -36,6 +37,14 @@ export async function appointmentRoutes(app: FastifyInstance) {
       "/appointments/available-slots",
       appointmentDocs.getAvailableSlots,
       getAvailableSlots
+    );
+
+  app
+    .withTypeProvider<ZodTypeProvider>()
+    .get(
+      "/appointments",
+      appointmentDocs.getAvailableSlotsByPeriod,
+      getAvailableSlotsByPeriod
     );
 
   app
