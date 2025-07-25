@@ -31,7 +31,7 @@ export async function usuarioRoutes(app: FastifyInstance) {
   app
     .withTypeProvider<ZodTypeProvider>()
     .get(
-      "/users/registrar/:registrarId",
+      "/users/registrar",
       usuarioDocs.getUsuariosByRegistrar,
       getUsuariosByRegistrar
     );

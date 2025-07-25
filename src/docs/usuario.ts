@@ -77,9 +77,6 @@ export class usuarioDocs {
       description:
         "Retorna todos os usuários registrados por um médico específico (apenas médicos podem acessar)",
       headers: headersSchema,
-      params: z.object({
-        registrarId: z.string().describe("ID do médico registrador")
-      }),
       response: {
         200: z.object({
           status: z.literal("success"),

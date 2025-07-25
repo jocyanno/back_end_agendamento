@@ -172,12 +172,11 @@ export async function getUsuariosByRegistrar(
   request: FastifyRequest,
   reply: FastifyReply
 ) {
-  // Verificar se o usuário logado é doctor
   await getUsuarioLogadoIsAdmin(request);
 
-  const { registrarId } = request.params as { registrarId: string };
+  const doctor = await getUsuarioLogadoIsAdmin(request);
 
-  const users = await getUsersByRegistrar(registrarId);
+  const users = await getUsersByRegistrar(doctor.id);
 
   return reply.status(200).send({
     status: "success",
