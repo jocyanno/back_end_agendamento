@@ -71,32 +71,6 @@ export const checkPendingAppointmentWithDoctor = async (
   }
 };
 
-// Verificar se o paciente já tem agendamento na semana
-export const checkWeeklyAppointmentLimit = async (
-  patientId: string,
-  date: Date
-): Promise<void> => {
-  const startOfWeek = moment(date).tz(TIMEZONE).startOf("week").toDate();
-  const endOfWeek = moment(date).tz(TIMEZONE).endOf("week").toDate();
-
-  const existingAppointment = await prisma.appointment.findFirst({
-    where: {
-      patientId: patientId,
-      startTime: {
-        gte: startOfWeek,
-        lte: endOfWeek
-      },
-      status: {
-        notIn: ["cancelled", "no_show"]
-      }
-    }
-  });
-
-  if (existingAppointment) {
-    throw new Error("Paciente já possui consulta agendada nesta semana");
-  }
-};
-
 // Verificar se o horário está disponível
 export async function checkSlotAvailability(
   doctorId: string,

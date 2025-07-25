@@ -66,7 +66,7 @@ export class appointmentDocs {
       tags: ["Appointment"],
       summary: "Criar novo agendamento",
       description:
-        "Cria um novo agendamento. Pacientes podem agendar apenas 1 consulta por semana.",
+        "Cria um novo agendamento. Pacientes podem agendar múltiplas consultas conforme disponibilidade.",
       headers: headersSchema,
       body: createAppointmentSchema,
       response: {

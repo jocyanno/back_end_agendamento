@@ -1,14 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
-  checkWeeklyAppointmentLimit,
+  createAppointment,
   checkSlotAvailability,
   generateAvailableSlots,
-  createAppointment,
   getPatientAppointments,
   getDoctorAppointments,
   updateAppointmentStatus,
   createDoctorAvailability,
   getDoctorAvailability,
+  deleteDoctorAvailability,
+  cancelAppointmentByAttendant,
+  canPatientScheduleWithDoctor,
   getAppointmentById
 } from "@/service/appointmentService.service";
 import { BadRequest } from "@/_errors/bad-request";
@@ -72,31 +74,6 @@ import { prisma } from "@/lib/prisma";
 describe("appointmentService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  describe("checkWeeklyAppointmentLimit", () => {
-    it("deve permitir agendamento se não houver conflito semanal", async () => {
-      vi.mocked(prisma.appointment.findFirst).mockResolvedValue(null);
-
-      await expect(
-        checkWeeklyAppointmentLimit("patient-id", new Date())
-      ).resolves.not.toThrow();
-    });
-
-    it("deve lançar erro se já houver agendamento na semana", async () => {
-      vi.mocked(prisma.appointment.findFirst).mockResolvedValue({
-        id: "appointment-id",
-        patientId: "patient-id",
-        doctorId: "doctor-id",
-        startTime: new Date(),
-        endTime: new Date(),
-        status: "scheduled" as AppointmentStatus
-      } as any);
-
-      await expect(
-        checkWeeklyAppointmentLimit("patient-id", new Date())
-      ).rejects.toThrow("Paciente já possui consulta agendada nesta semana");
-    });
   });
 
   describe("checkSlotAvailability", () => {
