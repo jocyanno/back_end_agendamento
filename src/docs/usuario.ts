@@ -197,7 +197,7 @@ export class usuarioDocs {
       description: "Login do usuário",
       body: z.object({
         email: z.string().transform((value) => value.toLowerCase()),
-        password: z.string().min(8, "A senha deve ter pelo menos 8 caracteres")
+        password: z.string()
       }),
       response: {
         200: z.object({
@@ -205,6 +205,7 @@ export class usuarioDocs {
           data: responseUsuarioLoginSchema
         }),
         400: errorResponseSchema,
+        401: errorResponseSchema,
         500: errorResponseSchema
       }
     }

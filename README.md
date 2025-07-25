@@ -77,7 +77,7 @@ O projeto inclui um script de seed que cria dados de exemplo para desenvolviment
 
 - **1 Atendente** (attendant)
 
-  - Ana Atendente (ana@hospital.com) - Senha: `123456789`
+  - Ana Atendente (ana@hospital.com) - Senha: `attendant`
 
 - **3 Pacientes** (patient)
 

@@ -32,17 +32,42 @@ export async function loginUsuario(
   request: FastifyRequest,
   reply: FastifyReply
 ) {
-  const { email, password } = request.body as {
-    email: string;
-    password: string;
-  };
+  try {
+    console.log("=== LOGIN ATTEMPT ===");
+    console.log("Headers:", request.headers);
+    console.log("Body:", request.body);
 
-  const user = await authenticateUser(email, password, request.server);
+    const { email, password } = request.body as {
+      email: string;
+      password: string;
+    };
 
-  return reply.status(200).send({
-    status: "success",
-    data: { token: user.token, usuario: user.usuario }
-  });
+    console.log("Email:", email);
+    console.log("Password length:", password?.length);
+
+    if (!email || !password) {
+      console.log("Missing email or password");
+      return reply.status(400).send({
+        status: "error",
+        message: "Email e senha são obrigatórios"
+      });
+    }
+
+    const user = await authenticateUser(email, password, request.server);
+
+    console.log("Login successful for:", email);
+
+    return reply.status(200).send({
+      status: "success",
+      data: { token: user.token, usuario: user.usuario }
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+    return reply.status(401).send({
+      status: "error",
+      message: error instanceof Error ? error.message : "Credenciais inválidas"
+    });
+  }
 }
 
 export async function createUsuario(
