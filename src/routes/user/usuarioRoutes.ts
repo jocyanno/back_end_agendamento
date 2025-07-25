@@ -13,7 +13,8 @@ import {
   updateUsuario,
   updateUsuarioByDoctor,
   getPacientesByDoctor,
-  createPacienteForDoctor
+  createPacienteForDoctor,
+  getFormData
 } from "@/controllers/usuarioController";
 import { usuarioDocs } from "@/docs/usuario";
 
@@ -25,6 +26,10 @@ export async function usuarioRoutes(app: FastifyInstance) {
   app
     .withTypeProvider<ZodTypeProvider>()
     .get("/doctors", usuarioDocs.getDoctors, getDoctors);
+
+  app
+    .withTypeProvider<ZodTypeProvider>()
+    .get("/users/form-data", usuarioDocs.getFormData, getFormData);
 
   app
     .withTypeProvider<ZodTypeProvider>()

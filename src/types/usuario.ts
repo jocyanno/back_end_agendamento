@@ -34,10 +34,7 @@ export const requestUsuarioSchema = responseUsuarioSchema
     updatedAt: true
   })
   .extend({
-    password: z
-      .string()
-      .min(8, "A senha deve ter pelo menos 8 caracteres")
-      .describe("Senha obrigatória para criação do usuário")
+    password: z.string().describe("Senha obrigatória para criação do usuário")
   });
 
 export const editUsuarioSchema = requestUsuarioSchema.partial();

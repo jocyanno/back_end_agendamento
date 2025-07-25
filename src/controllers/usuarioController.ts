@@ -75,6 +75,10 @@ export async function createUsuario(
   reply: FastifyReply
 ) {
   try {
+    console.log("=== CREATE USER ATTEMPT ===");
+    console.log("Headers:", request.headers);
+    console.log("Body:", request.body);
+
     const parseResult = request.body as Prisma.UsersCreateInput;
 
     console.log("Dados recebidos:", JSON.stringify(parseResult, null, 2));
@@ -94,6 +98,8 @@ export async function createUsuario(
       { userId: createUsuario.id, register: createUsuario.register },
       { expiresIn: "7d" }
     );
+
+    console.log("Usuário criado com sucesso:", createUsuario.email);
 
     return reply.status(200).send({
       status: "success",
@@ -310,6 +316,38 @@ export async function createPacienteForDoctor(
     return reply.status(400).send({
       status: "error",
       message: error instanceof Error ? error.message : "Validation error"
+    });
+  }
+}
+
+// Obter dados para formulário de criação de usuário
+export async function getFormData(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  try {
+    // Buscar médicos disponíveis para o campo registeredBy
+    const doctors = await getAllDoctors();
+
+    // Definir tipos de registro disponíveis
+    const registerTypes = [
+      { value: "patient", label: "Paciente" },
+      { value: "parents", label: "Responsável" },
+      { value: "attendant", label: "Atendente" }
+    ];
+
+    return reply.status(200).send({
+      status: "success",
+      data: {
+        doctors,
+        registerTypes
+      }
+    });
+  } catch (error) {
+    console.error("Erro ao buscar dados do formulário:", error);
+    return reply.status(500).send({
+      status: "error",
+      message: "Erro interno do servidor"
     });
   }
 }

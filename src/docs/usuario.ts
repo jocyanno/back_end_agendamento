@@ -49,6 +49,30 @@ export class usuarioDocs {
     }
   };
 
+  static getFormData = {
+    schema: {
+      tags: ["Usuario"],
+      summary: "Obter dados para formulário de criação de usuário",
+      description:
+        "Retorna médicos e tipos de registro disponíveis para o formulário",
+      response: {
+        200: z.object({
+          status: z.literal("success"),
+          data: z.object({
+            doctors: z.array(responseDoctorSchema),
+            registerTypes: z.array(
+              z.object({
+                value: z.string(),
+                label: z.string()
+              })
+            )
+          })
+        }),
+        500: errorResponseSchema
+      }
+    }
+  };
+
   static getAllUsuarios = {
     preHandler: [autenticarToken],
     schema: {
