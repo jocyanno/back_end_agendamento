@@ -49,28 +49,6 @@ export const selectAppointmentWithUsers = {
   }
 };
 
-// Verificar se o paciente já tem agendamento pendente com o profissional específico
-export const checkPendingAppointmentWithDoctor = async (
-  patientId: string,
-  doctorId: string
-): Promise<void> => {
-  const pendingAppointment = await prisma.appointment.findFirst({
-    where: {
-      patientId: patientId,
-      doctorId: doctorId,
-      status: {
-        in: ["scheduled", "confirmed"] // Agendamentos pendentes
-      }
-    }
-  });
-
-  if (pendingAppointment) {
-    throw new BadRequest(
-      `Paciente já possui um agendamento pendente com este profissional. Agendamento ID: ${pendingAppointment.id}`
-    );
-  }
-};
-
 // Verificar se o horário está disponível
 export async function checkSlotAvailability(
   doctorId: string,
@@ -473,9 +451,6 @@ export const createAppointment = async (appointmentData: any) => {
     throw new Error("Médico não encontrado");
   }
 
-  // Verificar agendamento pendente com o profissional específico
-  await checkPendingAppointmentWithDoctor(patientIdString, doctorIdString);
-
   // Verificar conflito de horário
   await checkSlotAvailability(
     doctorIdString,
@@ -535,37 +510,7 @@ export const canPatientScheduleWithDoctor = async (
   existingAppointment?: any;
 }> => {
   try {
-    // Verificar se o paciente já tem agendamento pendente com este profissional
-    const pendingAppointment = await prisma.appointment.findFirst({
-      where: {
-        patientId: patientId,
-        doctorId: doctorId,
-        status: {
-          in: ["scheduled", "confirmed"] // Agendamentos pendentes
-        }
-      },
-      select: {
-        id: true,
-        startTime: true,
-        endTime: true,
-        status: true,
-        doctor: {
-          select: {
-            id: true,
-            name: true
-          }
-        }
-      }
-    });
-
-    if (pendingAppointment) {
-      return {
-        canSchedule: false,
-        reason: `Paciente já possui um agendamento pendente com ${pendingAppointment.doctor.name}`,
-        existingAppointment: pendingAppointment
-      };
-    }
-
+    // ✅ SEMPRE PERMITE AGENDAMENTO - Restrição removida
     return {
       canSchedule: true
     };

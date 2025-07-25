@@ -360,7 +360,7 @@ export class appointmentDocs {
       tags: ["Appointment"],
       summary: "Verificar se paciente pode agendar com profissional",
       description:
-        "Verifica se um paciente pode agendar com um profissional específico (não pode ter agendamento pendente com o mesmo profissional)",
+        "Verifica se um paciente pode agendar com um profissional específico (sempre permite agendamento)",
       params: z.object({
         patientId: z.string().describe("ID do paciente"),
         doctorId: z.string().describe("ID do profissional")
