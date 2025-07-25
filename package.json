@@ -17,13 +17,21 @@
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
     "test:setup": "npm run db:test:reset && npm run db:test:migrate",
+    "db:up": "docker-compose up -d",
+    "db:down": "docker-compose down",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
     "db:push": "prisma db push",
     "db:reset": "prisma migrate reset",
+    "db:reset:seed": "prisma migrate reset --force && npm run seed",
     "db:test:reset": "cross-env DATABASE_URL=$TEST_DATABASE_URL npx prisma migrate reset --force",
     "db:test:migrate": "cross-env DATABASE_URL=$TEST_DATABASE_URL npx prisma migrate deploy",
+    "seed": "tsx prisma/seed.ts",
+    "seed:dev": "npm run db:reset:seed",
+    "dev:full": "npm run db:up && npm run db:migrate && npm run seed && npm run dev"
+  },
+  "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "devDependencies": {

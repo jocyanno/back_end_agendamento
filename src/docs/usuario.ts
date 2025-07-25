@@ -69,6 +69,29 @@ export class usuarioDocs {
     }
   };
 
+  static getUsuariosByRegistrar = {
+    preHandler: [autenticarToken],
+    schema: {
+      tags: ["Usuario"],
+      summary: "Listar usuários registrados por um médico",
+      description:
+        "Retorna todos os usuários registrados por um médico específico (apenas médicos podem acessar)",
+      headers: headersSchema,
+      params: z.object({
+        registrarId: z.string().describe("ID do médico registrador")
+      }),
+      response: {
+        200: z.object({
+          status: z.literal("success"),
+          data: z.array(responseUsuarioSchema)
+        }),
+        401: errorResponseSchema,
+        403: errorResponseSchema,
+        500: errorResponseSchema
+      }
+    }
+  };
+
   static getUsuarioById = {
     preHandler: [autenticarToken],
     schema: {
@@ -143,7 +166,8 @@ export class usuarioDocs {
     schema: {
       tags: ["Usuario"],
       summary: "Criar um novo usuário",
-      description: "Cria um novo usuário não permitido criar um admin",
+      description:
+        "Cria um novo usuário. O campo registeredBy é opcional e pode ser usado para indicar quem registrou o usuário.",
       body: requestUsuarioSchema,
       response: {
         200: z.object({

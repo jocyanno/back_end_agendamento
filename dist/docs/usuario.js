@@ -61,6 +61,27 @@ usuarioDocs.getAllUsuarios = {
         }
     }
 };
+usuarioDocs.getUsuariosByRegistrar = {
+    preHandler: [auth_1.autenticarToken],
+    schema: {
+        tags: ["Usuario"],
+        summary: "Listar usuários registrados por um médico",
+        description: "Retorna todos os usuários registrados por um médico específico (apenas médicos podem acessar)",
+        headers: scheme_1.headersSchema,
+        params: v4_1.z.object({
+            registrarId: v4_1.z.string().describe("ID do médico registrador")
+        }),
+        response: {
+            200: v4_1.z.object({
+                status: v4_1.z.literal("success"),
+                data: v4_1.z.array(usuario_1.responseUsuarioSchema)
+            }),
+            401: errorResponseSchema,
+            403: errorResponseSchema,
+            500: errorResponseSchema
+        }
+    }
+};
 usuarioDocs.getUsuarioById = {
     preHandler: [auth_1.autenticarToken],
     schema: {

@@ -1,7 +1,7 @@
 import { z } from "zod/v4";
 import { formatDate } from "@/utils/formatDate";
 
-const schemaRegister = z.enum(["patient", "parents", "doctor"]);
+const schemaRegister = z.enum(["patient", "parents", "doctor", "attendant"]);
 
 export const responseUsuarioSchemaProps = {
   id: z.string(),
@@ -20,6 +20,7 @@ export const responseUsuarioSchemaProps = {
   country: z.string().nullish(),
   cid: z.string().nullish(),
   register: schemaRegister,
+  registeredBy: z.string().nullish(),
   createdAt: z.coerce.string().or(z.date()).transform(formatDate).nullish(),
   updatedAt: z.coerce.string().or(z.date()).transform(formatDate).nullish()
 };
@@ -29,13 +30,14 @@ export const responseUsuarioSchema = z.object(responseUsuarioSchemaProps);
 export const requestUsuarioSchema = responseUsuarioSchema
   .omit({
     id: true,
-    birthDate: true,
     createdAt: true,
     updatedAt: true
   })
   .extend({
-    password: z.string().min(8, "A senha deve ter pelo menos 8 caracteres"),
-    birthDate: z.coerce.string().nullish()
+    password: z
+      .string()
+      .min(8, "A senha deve ter pelo menos 8 caracteres")
+      .describe("Senha obrigatória para criação do usuário")
   });
 
 export const editUsuarioSchema = requestUsuarioSchema.partial();
@@ -65,5 +67,6 @@ export const responseDoctorSchema = z.object({
   state: z.string().nullish(),
   cid: z.string().nullish(),
   register: schemaRegister,
+  registeredBy: z.string().nullish(),
   createdAt: z.coerce.string().or(z.date()).transform(formatDate).nullish()
 });

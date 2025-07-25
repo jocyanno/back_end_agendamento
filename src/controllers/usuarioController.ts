@@ -12,6 +12,7 @@ import {
   getUserExisting,
   getUsuarioLogado,
   getUsuarioLogadoIsAdmin,
+  getUsersByRegistrar,
   updateUser,
   updateUserByDoctor
 } from "@/service/usuarioService.service";
@@ -46,26 +47,38 @@ export async function createUsuario(
   request: FastifyRequest,
   reply: FastifyReply
 ) {
-  const parseResult = request.body as Prisma.UsersCreateInput;
+  try {
+    const parseResult = request.body as Prisma.UsersCreateInput;
 
-  console.log(parseResult);
+    console.log("Dados recebidos:", JSON.stringify(parseResult, null, 2));
 
-  await getUserExisting({
-    email: parseResult.email,
-    cpf: parseResult.cpf
-  });
+    await getUserExisting({
+      email: parseResult.email,
+      cpf: parseResult.cpf
+    });
 
-  const createUsuario = await createUser(parseResult);
+    // Usar o registeredBy enviado no JSON ou undefined se não fornecido
+    const createUsuario = await createUser(
+      parseResult,
+      parseResult.registeredBy || undefined
+    );
 
-  const token = request.server.jwt.sign(
-    { userId: createUsuario.id, register: createUsuario.register },
-    { expiresIn: "7d" }
-  );
+    const token = request.server.jwt.sign(
+      { userId: createUsuario.id, register: createUsuario.register },
+      { expiresIn: "7d" }
+    );
 
-  return reply.status(200).send({
-    status: "success",
-    data: { token, usuario: createUsuario }
-  });
+    return reply.status(200).send({
+      status: "success",
+      data: { token, usuario: createUsuario }
+    });
+  } catch (error) {
+    console.error("Erro na criação de usuário:", error);
+    return reply.status(400).send({
+      status: "error",
+      message: error instanceof Error ? error.message : "Validation error"
+    });
+  }
 }
 
 export async function createUsuarioAdmin(
@@ -73,16 +86,19 @@ export async function createUsuarioAdmin(
   reply: FastifyReply
 ) {
   // Verificar se o usuário logado é admin
-  await getUsuarioLogadoIsAdmin(request);
+  const admin = await getUsuarioLogadoIsAdmin(request);
 
   const parseResult = request.body as Prisma.UsersCreateInput;
+
+  console.log("Dados recebidos:", JSON.stringify(parseResult, null, 2));  
 
   await getUserExisting({
     email: parseResult.email,
     cpf: parseResult.cpf
   });
 
-  const createUsuario = await createUserAdmin(parseResult);
+  // Passar o ID do admin como registeredBy
+  const createUsuario = await createUserAdmin(parseResult, admin.id);
 
   const token = request.server.jwt.sign(
     { userId: createUsuario.id, register: createUsuario.register },
@@ -149,6 +165,23 @@ export async function getUsuarioById(
   return reply.status(200).send({
     status: "success",
     data: user
+  });
+}
+
+export async function getUsuariosByRegistrar(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  // Verificar se o usuário logado é doctor
+  await getUsuarioLogadoIsAdmin(request);
+
+  const { registrarId } = request.params as { registrarId: string };
+
+  const users = await getUsersByRegistrar(registrarId);
+
+  return reply.status(200).send({
+    status: "success",
+    data: users
   });
 }
 

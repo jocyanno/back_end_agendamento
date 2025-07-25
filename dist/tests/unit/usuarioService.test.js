@@ -59,6 +59,7 @@ vitest_1.vi.mock("moment-timezone", () => ({
                 zipCode: null,
                 country: null,
                 cid: null,
+                registeredBy: null,
                 createdAt: new Date(),
                 updatedAt: new Date()
             };
@@ -103,6 +104,7 @@ vitest_1.vi.mock("moment-timezone", () => ({
                 zipCode: null,
                 country: null,
                 cid: null,
+                registeredBy: null,
                 createdAt: new Date(),
                 updatedAt: new Date()
             };
@@ -138,6 +140,7 @@ vitest_1.vi.mock("moment-timezone", () => ({
                 zipCode: null,
                 country: null,
                 cid: null,
+                registeredBy: null,
                 createdAt: new Date(),
                 updatedAt: new Date()
             };
@@ -189,6 +192,7 @@ vitest_1.vi.mock("moment-timezone", () => ({
                 zipCode: null,
                 country: null,
                 cid: null,
+                registeredBy: null,
                 createdAt: new Date(),
                 updatedAt: new Date()
             };
@@ -227,6 +231,7 @@ vitest_1.vi.mock("moment-timezone", () => ({
                 zipCode: null,
                 country: null,
                 cid: null,
+                registeredBy: null,
                 createdAt: new Date(),
                 updatedAt: new Date()
             };
@@ -269,6 +274,7 @@ vitest_1.vi.mock("moment-timezone", () => ({
                 zipCode: null,
                 country: null,
                 cid: null,
+                registeredBy: null,
                 createdAt: new Date(),
                 updatedAt: new Date()
             };
@@ -301,6 +307,7 @@ vitest_1.vi.mock("moment-timezone", () => ({
                 zipCode: null,
                 country: null,
                 cid: null,
+                registeredBy: null,
                 createdAt: new Date(),
                 updatedAt: new Date()
             };
@@ -332,6 +339,7 @@ vitest_1.vi.mock("moment-timezone", () => ({
                 zipCode: null,
                 country: null,
                 cid: null,
+                registeredBy: null,
                 createdAt: new Date(),
                 updatedAt: new Date()
             };

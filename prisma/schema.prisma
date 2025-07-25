@@ -10,6 +10,7 @@ datasource db {
 enum Register {
   patient
   parents
+  attendant
   doctor
 }
 
@@ -20,6 +21,7 @@ model Users {
   password        String
   cpf             String    @unique
   register        Register  @default(patient)
+  registeredBy    String?  
   image           String?
   phone           String?   @unique
   birthDate       DateTime?

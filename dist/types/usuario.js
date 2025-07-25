@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.responseDoctorSchema = exports.responseUsuarioLoginSchema = exports.editUsuarioByAdminSchema = exports.editUsuarioSchema = exports.requestUsuarioSchema = exports.responseUsuarioSchema = exports.responseUsuarioSchemaProps = void 0;
 const v4_1 = require("zod/v4");
 const formatDate_1 = require("../utils/formatDate");
-const schemaRegister = v4_1.z.enum(["patient", "parents", "doctor"]);
+const schemaRegister = v4_1.z.enum(["patient", "parents", "doctor", "attendant"]);
 exports.responseUsuarioSchemaProps = {
     id: v4_1.z.string(),
     name: v4_1.z.string().nullish(),
@@ -21,6 +21,7 @@ exports.responseUsuarioSchemaProps = {
     country: v4_1.z.string().nullish(),
     cid: v4_1.z.string().nullish(),
     register: schemaRegister,
+    registeredBy: v4_1.z.string().nullish(),
     createdAt: v4_1.z.coerce.string().or(v4_1.z.date()).transform(formatDate_1.formatDate).nullish(),
     updatedAt: v4_1.z.coerce.string().or(v4_1.z.date()).transform(formatDate_1.formatDate).nullish()
 };
@@ -60,6 +61,7 @@ exports.responseDoctorSchema = v4_1.z.object({
     state: v4_1.z.string().nullish(),
     cid: v4_1.z.string().nullish(),
     register: schemaRegister,
+    registeredBy: v4_1.z.string().nullish(),
     createdAt: v4_1.z.coerce.string().or(v4_1.z.date()).transform(formatDate_1.formatDate).nullish()
 });
 //# sourceMappingURL=usuario.js.map

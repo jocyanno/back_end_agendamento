@@ -15,67 +15,110 @@ Esta é a API backend para o sistema de agendamento desenvolvido com Fastify, Pr
 ## 📋 Pré-requisitos
 
 - Node.js 18+
-- PostgreSQL
+- PostgreSQL (ou Docker)
 - npm ou yarn
 
 ## ⚙️ Configuração
 
-### 1. Clone o repositório
+### Opção 1: Usando Docker (Recomendado)
 
 ```bash
+# 1. Clone o repositório
 git clone <url-do-repositorio>
 cd back_end
-```
 
-### 2. Instale as dependências
-
-```bash
+# 2. Instale as dependências
 npm install
-```
 
-### 3. Configure as variáveis de ambiente
-
-Crie um arquivo `.env` na raiz do projeto com:
-
-```env
-# Database
-DATABASE_URL="postgresql://username:password@localhost:5432/agendamento_mae"
-
-# JWT
+# 3. Configure as variáveis de ambiente
+# Crie um arquivo .env na raiz do projeto com:
+DATABASE_URL="postgresql://agendamento:agendamento@localhost:5432/agendamento"
 JWT_SECRET="your-super-secret-jwt-key-here"
 
-# SMTP (opcional para emails)
-SMTP_HOST="smtp.gmail.com"
-SMTP_PORT="587"
-SMTP_EMAIL="your-email@gmail.com"
-SMTP_PASSWORD="your-app-password"
+# 4. Inicie tudo de uma vez (Docker + Migrações + Seed + Servidor)
+npm run dev:full
 ```
 
-### 4. Execute as migrações do banco
+### Opção 2: Configuração Manual
 
 ```bash
-npx prisma migrate dev
-npx prisma generate
-```
+# 1. Clone o repositório
+git clone <url-do-repositorio>
+cd back_end
 
-### 5. Inicie o servidor
+# 2. Instale as dependências
+npm install
 
-```bash
+# 3. Configure as variáveis de ambiente
+# Crie um arquivo .env na raiz do projeto com:
+DATABASE_URL="postgresql://username:password@localhost:5432/agendamento_mae"
+JWT_SECRET="your-super-secret-jwt-key-here"
+
+# 4. Execute as migrações do banco
+npm run db:migrate
+
+# 5. Execute o seed para criar dados de exemplo
+npm run seed
+
+# 6. Inicie o servidor
 npm run dev
+```
+
+## 🌱 Seed do Banco de Dados
+
+O projeto inclui um script de seed que cria dados de exemplo para desenvolvimento:
+
+### Dados Criados pelo Seed:
+
+- **2 Médicos** (doctor)
+
+  - Dr. João Silva (admin@hospital.com) - Senha: `admin123`
+  - Dra. Maria Oliveira (maria.doctor@hospital.com) - Senha: `admin123`
+
+- **1 Atendente** (attendant)
+
+  - Ana Atendente (ana@hospital.com) - Senha: `123456789`
+
+- **3 Pacientes** (patient)
+
+  - Carlos Santos (carlos@email.com) - Senha: `123456789`
+  - Pedro Oliveira (pedro@email.com) - Senha: `123456789`
+  - Fernanda Costa (fernanda@email.com) - Senha: `123456789`
+
+- **1 Responsável** (parents)
+
+  - Roberto Mendes (roberto@email.com) - Senha: `123456789`
+
+- **8 Disponibilidades** (horários dos médicos)
+- **2 Agendamentos** de exemplo
+- **2 Atendimentos** de exemplo
+- **2 Notificações** de exemplo
+
+### Comandos do Seed:
+
+```bash
+# Executar apenas o seed
+npm run seed
+
+# Reset do banco + seed
+npm run seed:dev
+
+# Reset completo (migrações + seed)
+npm run db:reset:seed
 ```
 
 ## 📚 Documentação da API
 
 Após iniciar o servidor, acesse:
 
-- **Swagger UI**: http://localhost:3000/docs
+- **Swagger UI**: http://localhost:3333/docs
 
 ## 🔐 Autenticação
 
 A API utiliza JWT (JSON Web Tokens) para autenticação:
 
-1. **Login**: `POST /usuario/login`
-2. **Registrar**: `POST /usuario`
+1. **Login**: `POST /user/login`
+2. **Registrar**: `POST /user`
 3. **Usar token**: Inclua o header `Authorization: Bearer <token>`
 
 ### Payload do JWT
@@ -85,7 +128,7 @@ O token JWT contém as seguintes informações:
 ```json
 {
   "userId": "string",
-  "register": "patient" | "parents" | "doctor",
+  "register": "patient" | "parents" | "doctor" | "attendant",
   "iat": "timestamp",
   "exp": "timestamp"
 }
@@ -96,6 +139,7 @@ O token JWT contém as seguintes informações:
 - **patient**: Paciente
 - **parents**: Pais/Responsáveis
 - **doctor**: Médico (apenas admins podem criar)
+- **attendant**: Atendente
 
 ## 📊 Estrutura do Banco
 

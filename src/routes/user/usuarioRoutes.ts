@@ -8,6 +8,7 @@ import {
   getDoctors,
   getUsuario,
   getUsuarioById,
+  getUsuariosByRegistrar,
   loginUsuario,
   updateUsuario,
   updateUsuarioByDoctor
@@ -26,6 +27,14 @@ export async function usuarioRoutes(app: FastifyInstance) {
   app
     .withTypeProvider<ZodTypeProvider>()
     .get("/users", usuarioDocs.getAllUsuarios, getAllUsuarios);
+
+  app
+    .withTypeProvider<ZodTypeProvider>()
+    .get(
+      "/users/registrar/:registrarId",
+      usuarioDocs.getUsuariosByRegistrar,
+      getUsuariosByRegistrar
+    );
 
   app
     .withTypeProvider<ZodTypeProvider>()

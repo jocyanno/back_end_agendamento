@@ -8,6 +8,7 @@ exports.updateUsuario = updateUsuario;
 exports.getDoctors = getDoctors;
 exports.getAllUsuarios = getAllUsuarios;
 exports.getUsuarioById = getUsuarioById;
+exports.getUsuariosByRegistrar = getUsuariosByRegistrar;
 exports.updateUsuarioByDoctor = updateUsuarioByDoctor;
 exports.deleteUsuario = deleteUsuario;
 const usuarioService_service_1 = require("../service/usuarioService.service");
@@ -33,6 +34,7 @@ async function createUsuario(request, reply) {
         email: parseResult.email,
         cpf: parseResult.cpf
     });
+    // Para criação normal, não há usuário logado, então registeredBy será null
     const createUsuario = await (0, usuarioService_service_1.createUser)(parseResult);
     const token = request.server.jwt.sign({ userId: createUsuario.id, register: createUsuario.register }, { expiresIn: "7d" });
     return reply.status(200).send({
@@ -42,13 +44,14 @@ async function createUsuario(request, reply) {
 }
 async function createUsuarioAdmin(request, reply) {
     // Verificar se o usuário logado é admin
-    await (0, usuarioService_service_1.getUsuarioLogadoIsAdmin)(request);
+    const admin = await (0, usuarioService_service_1.getUsuarioLogadoIsAdmin)(request);
     const parseResult = request.body;
     await (0, usuarioService_service_1.getUserExisting)({
         email: parseResult.email,
         cpf: parseResult.cpf
     });
-    const createUsuario = await (0, usuarioService_service_1.createUserAdmin)(parseResult);
+    // Passar o ID do admin como registeredBy
+    const createUsuario = await (0, usuarioService_service_1.createUserAdmin)(parseResult, admin.id);
     const token = request.server.jwt.sign({ userId: createUsuario.id, register: createUsuario.register }, { expiresIn: "7d" });
     return reply.status(200).send({
         status: "success",
@@ -88,6 +91,16 @@ async function getUsuarioById(request, reply) {
     return reply.status(200).send({
         status: "success",
         data: user
+    });
+}
+async function getUsuariosByRegistrar(request, reply) {
+    // Verificar se o usuário logado é doctor
+    await (0, usuarioService_service_1.getUsuarioLogadoIsAdmin)(request);
+    const { registrarId } = request.params;
+    const users = await (0, usuarioService_service_1.getUsersByRegistrar)(registrarId);
+    return reply.status(200).send({
+        status: "success",
+        data: users
     });
 }
 async function updateUsuarioByDoctor(request, reply) {

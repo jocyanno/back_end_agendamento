@@ -25,6 +25,7 @@ export const selectUsuario = {
   country: true,
   cid: true,
   register: true,
+  registeredBy: true,
   createdAt: true,
   updatedAt: true
 };
@@ -158,9 +159,16 @@ export async function getUserExisting({
   return;
 }
 
-export async function createUser(data: Prisma.UsersCreateInput) {
+export async function createUser(
+  data: Prisma.UsersCreateInput,
+  registeredBy?: string
+) {
   if (data.register === "doctor") {
     throw new BadRequest("Register doctor is not allowed");
+  }
+
+  if (!data.password) {
+    throw new BadRequest("Password is required");
   }
 
   const hashedPassword = await bcrypt.hash(data.password, 10);
@@ -173,7 +181,8 @@ export async function createUser(data: Prisma.UsersCreateInput) {
           ? moment(data.birthDate).toDate()
           : null
         : null,
-      password: hashedPassword
+      password: hashedPassword,
+      registeredBy: registeredBy || null
     },
     select: selectUsuario
   });
@@ -181,7 +190,14 @@ export async function createUser(data: Prisma.UsersCreateInput) {
   return user;
 }
 
-export async function createUserAdmin(data: Prisma.UsersCreateInput) {
+export async function createUserAdmin(
+  data: Prisma.UsersCreateInput,
+  registeredBy?: string
+) {
+  if (!data.password) {
+    throw new BadRequest("Password is required");
+  }
+
   const hashedPassword = await bcrypt.hash(data.password, 10);
 
   const user = await prisma.users.create({
@@ -192,7 +208,8 @@ export async function createUserAdmin(data: Prisma.UsersCreateInput) {
           ? moment(data.birthDate).toDate()
           : null
         : null,
-      password: hashedPassword
+      password: hashedPassword,
+      registeredBy: registeredBy || null
     },
     select: selectUsuario
   });
@@ -308,6 +325,7 @@ export async function getAllDoctors() {
       state: true,
       cid: true,
       register: true,
+      registeredBy: true,
       createdAt: true
     },
     orderBy: {
@@ -316,6 +334,18 @@ export async function getAllDoctors() {
   });
 
   return doctors;
+}
+
+export async function getUsersByRegistrar(registrarId: string) {
+  const users = await prisma.users.findMany({
+    where: {
+      registeredBy: registrarId
+    },
+    select: selectUsuario,
+    orderBy: [{ register: "desc" }, { name: "asc" }]
+  });
+
+  return users;
 }
 
 export async function updateUserByDoctor(

@@ -15,7 +15,13 @@ async function usuarioRoutes(app) {
         .get("/users", usuario_1.usuarioDocs.getAllUsuarios, usuarioController_1.getAllUsuarios);
     app
         .withTypeProvider()
+        .get("/users/registrar/:registrarId", usuario_1.usuarioDocs.getUsuariosByRegistrar, usuarioController_1.getUsuariosByRegistrar);
+    app
+        .withTypeProvider()
         .get("/users/:id", usuario_1.usuarioDocs.getUsuarioById, usuarioController_1.getUsuarioById);
+    app
+        .withTypeProvider()
+        .get("/users/registrar/:registrarId", usuario_1.usuarioDocs.getUsuariosByRegistrar, usuarioController_1.getUsuariosByRegistrar);
     app
         .withTypeProvider()
         .post("/user/login", usuario_1.usuarioDocs.loginUsuario, usuarioController_1.loginUsuario);
