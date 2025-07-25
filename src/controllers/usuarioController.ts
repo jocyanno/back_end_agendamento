@@ -90,7 +90,7 @@ export async function createUsuarioAdmin(
 
   const parseResult = request.body as Prisma.UsersCreateInput;
 
-  console.log("Dados recebidos:", JSON.stringify(parseResult, null, 2));  
+  console.log("Dados recebidos:", JSON.stringify(parseResult, null, 2));
 
   await getUserExisting({
     email: parseResult.email,
