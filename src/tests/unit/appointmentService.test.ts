@@ -115,7 +115,11 @@ describe("appointmentService", () => {
         doctorId: "doctor-id",
         startTime: new Date(),
         endTime: new Date(),
-        status: "scheduled" as AppointmentStatus
+        status: "scheduled" as AppointmentStatus,
+        patient: {
+          id: "patient-id",
+          name: "Test Patient"
+        }
       } as any);
 
       await expect(

@@ -103,6 +103,12 @@ export async function checkSlotAvailability(
   startTime: Date,
   endTime: Date
 ) {
+  console.log(
+    `🔍 VERIFICANDO DISPONIBILIDADE: ${moment(startTime).format(
+      "DD/MM/YYYY HH:mm"
+    )} - ${moment(endTime).format("HH:mm")}`
+  );
+
   const conflictingAppointment = await prisma.appointment.findFirst({
     where: {
       doctorId,
@@ -126,12 +132,40 @@ export async function checkSlotAvailability(
           ]
         }
       ]
+    },
+    include: {
+      patient: {
+        select: {
+          id: true,
+          name: true
+        }
+      }
     }
   });
 
   if (conflictingAppointment) {
+    console.log(
+      `❌ CONFLITO ENCONTRADO: Agendamento ID ${conflictingAppointment.id}`
+    );
+    console.log(
+      `   Horário conflitante: ${moment(
+        conflictingAppointment.startTime
+      ).format("DD/MM/YYYY HH:mm")} - ${moment(
+        conflictingAppointment.endTime
+      ).format("HH:mm")}`
+    );
+    console.log(
+      `   Paciente: ${conflictingAppointment.patient.name} (ID: ${conflictingAppointment.patient.id})`
+    );
+    console.log(`   Status: ${conflictingAppointment.status}`);
     throw new BadRequest("Este horário já está ocupado");
   }
+
+  console.log(
+    `✅ HORÁRIO DISPONÍVEL: ${moment(startTime).format(
+      "DD/MM/YYYY HH:mm"
+    )} - ${moment(endTime).format("HH:mm")}`
+  );
 }
 
 // Função para debug dos horários
@@ -198,6 +232,21 @@ export async function generateAvailableSlots(doctorId: string, date: string) {
     }
   });
 
+  // Debug: Log dos agendamentos existentes
+  console.log(`=== AGENDAMENTOS EXISTENTES PARA ${date} ===`);
+  console.log(`Médico ID: ${doctorId}`);
+  console.log(`Total de agendamentos: ${existingAppointments.length}`);
+  existingAppointments.forEach((appointment, index) => {
+    console.log(
+      `${index + 1}. ${moment(appointment.startTime).format(
+        "HH:mm"
+      )} - ${moment(appointment.endTime).format("HH:mm")} (${
+        appointment.status
+      })`
+    );
+  });
+  console.log("==========================================");
+
   // Gerar slots baseados na disponibilidade
   const slots = [];
   const [availStartHour, availStartMin] = availability.startTime
@@ -262,14 +311,40 @@ export async function generateAvailableSlots(doctorId: string, date: string) {
       .add(SESSION_DURATION_MINUTES, "minutes");
 
     // Verificar se o slot não conflita com agendamentos existentes
-    const isAvailable = !existingAppointments.some((appointment) => {
+    const conflictingAppointment = existingAppointments.find((appointment) => {
       const appointmentStart = moment(appointment.startTime).tz(TIMEZONE);
       const appointmentEnd = moment(appointment.endTime).tz(TIMEZONE);
-      return (
-        currentSlot.isBefore(appointmentEnd) &&
-        slotEnd.isAfter(appointmentStart)
-      );
+
+      // Verificar se há sobreposição de horários
+      // O slot está disponível se:
+      // 1. O slot termina antes do início do agendamento, OU
+      // 2. O slot começa depois do fim do agendamento
+      const slotEndsBeforeAppointment =
+        slotEnd.isSameOrBefore(appointmentStart);
+      const slotStartsAfterAppointment =
+        currentSlot.isSameOrAfter(appointmentEnd);
+
+      // Se NÃO há sobreposição, o slot está disponível
+      return !(slotEndsBeforeAppointment || slotStartsAfterAppointment);
     });
+
+    const isAvailable = !conflictingAppointment;
+
+    // Debug: Log de slots conflitantes
+    if (!isAvailable && conflictingAppointment) {
+      console.log(
+        `❌ SLOT CONFLITANTE: ${currentSlot.format("HH:mm")} - ${slotEnd.format(
+          "HH:mm"
+        )}`
+      );
+      console.log(
+        `   Conflita com: ${moment(conflictingAppointment.startTime).format(
+          "HH:mm"
+        )} - ${moment(conflictingAppointment.endTime).format("HH:mm")} (${
+          conflictingAppointment.status
+        })`
+      );
+    }
 
     // Verificar se o slot não está no passado
     // Se for hoje, verificar se o horário já passou
@@ -304,6 +379,13 @@ export async function generateAvailableSlots(doctorId: string, date: string) {
         endTime: endTimeUTC.toISOString(),
         available: true
       });
+
+      // Debug: Log de slots disponíveis
+      console.log(
+        `✅ SLOT DISPONÍVEL: ${currentSlot.format("HH:mm")} - ${slotEnd.format(
+          "HH:mm"
+        )}`
+      );
     }
 
     // Próximo slot (sessão + intervalo)
@@ -315,6 +397,13 @@ export async function generateAvailableSlots(doctorId: string, date: string) {
 
   // Os slots são retornados em formato UTC mas com horário brasileiro
   // Exemplo: 08:00 BRT = 08:00 UTC (2025-07-03T08:00:00.000Z)
+
+  // Debug: Resumo final
+  console.log(
+    `📊 RESUMO: ${slots.length} slots disponíveis gerados para ${date}`
+  );
+  console.log("==========================================");
+
   return slots;
 }
 
