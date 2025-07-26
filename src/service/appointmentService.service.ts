@@ -56,9 +56,11 @@ export async function checkSlotAvailability(
   endTime: Date
 ) {
   console.log(
-    `🔍 VERIFICANDO DISPONIBILIDADE: ${moment(startTime).format(
-      "DD/MM/YYYY HH:mm"
-    )} - ${moment(endTime).format("HH:mm")}`
+    `🔍 VERIFICANDO DISPONIBILIDADE: ${moment(startTime)
+      .tz(TIMEZONE)
+      .format("DD/MM/YYYY HH:mm")} - ${moment(endTime)
+      .tz(TIMEZONE)
+      .format("HH:mm")}`
   );
 
   const conflictingAppointment = await prisma.appointment.findFirst({
@@ -100,11 +102,11 @@ export async function checkSlotAvailability(
       `❌ CONFLITO ENCONTRADO: Agendamento ID ${conflictingAppointment.id}`
     );
     console.log(
-      `   Horário conflitante: ${moment(
-        conflictingAppointment.startTime
-      ).format("DD/MM/YYYY HH:mm")} - ${moment(
-        conflictingAppointment.endTime
-      ).format("HH:mm")}`
+      `   Horário conflitante: ${moment(conflictingAppointment.startTime)
+        .tz(TIMEZONE)
+        .format("DD/MM/YYYY HH:mm")} - ${moment(conflictingAppointment.endTime)
+        .tz(TIMEZONE)
+        .format("HH:mm")}`
     );
     console.log(
       `   Paciente: ${conflictingAppointment.patient.name} (ID: ${conflictingAppointment.patient.id})`
@@ -114,9 +116,11 @@ export async function checkSlotAvailability(
   }
 
   console.log(
-    `✅ HORÁRIO DISPONÍVEL: ${moment(startTime).format(
-      "DD/MM/YYYY HH:mm"
-    )} - ${moment(endTime).format("HH:mm")}`
+    `✅ HORÁRIO DISPONÍVEL: ${moment(startTime)
+      .tz(TIMEZONE)
+      .format("DD/MM/YYYY HH:mm")} - ${moment(endTime)
+      .tz(TIMEZONE)
+      .format("HH:mm")}`
   );
 }
 
@@ -463,8 +467,8 @@ export const createAppointment = async (appointmentData: any) => {
     data: {
       patientId: patientIdString,
       doctorId: doctorIdString,
-      startTime: new Date(startTime),
-      endTime: new Date(endTime),
+      startTime: moment(startTime).tz(TIMEZONE).toDate(),
+      endTime: moment(endTime).tz(TIMEZONE).toDate(),
       notes: notes || "",
       status: "scheduled"
     },
