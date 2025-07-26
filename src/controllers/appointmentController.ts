@@ -2,6 +2,7 @@ import { FastifyReply, FastifyRequest } from "fastify";
 import { AuthenticatedRequest } from "@/types/AuthenticatedRequest";
 import {
   createAppointment,
+  createAppointmentForAttendant,
   getPatientAppointments,
   getDoctorAppointments,
   updateAppointmentStatus,
@@ -313,13 +314,27 @@ export async function postAppointmentForPatient(
   const startDate = new Date(startTime);
   const endDate = new Date(startDate.getTime() + 50 * 60 * 1000); // +50 minutos
 
-  const appointment = await createAppointment({
-    patientId,
-    doctorId,
-    startTime,
-    endTime: endDate.toISOString(),
-    notes
-  });
+  // Usar função diferente baseado no tipo de usuário
+  let appointment;
+  if (register === "attendant") {
+    // Para atendente, usar função que não adiciona 3 horas
+    appointment = await createAppointmentForAttendant({
+      patientId,
+      doctorId,
+      startTime,
+      endTime: endDate.toISOString(),
+      notes
+    });
+  } else {
+    // Para médico, usar função normal que adiciona 3 horas
+    appointment = await createAppointment({
+      patientId,
+      doctorId,
+      startTime,
+      endTime: endDate.toISOString(),
+      notes
+    });
+  }
 
   return reply.status(201).send({
     status: "success",

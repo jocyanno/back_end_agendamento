@@ -57,6 +57,7 @@ vi.mock("moment-timezone", () => ({
     second: vi.fn().mockReturnThis(),
     millisecond: vi.fn().mockReturnThis(),
     add: vi.fn().mockReturnThis(),
+    subtract: vi.fn().mockReturnThis(),
     day: vi.fn(() => 1),
     diff: vi.fn(() => 25),
     toISOString: vi.fn(() => "2024-01-01T08:00:00.000Z")
@@ -273,7 +274,9 @@ describe("appointmentService", () => {
 
       const result = await getPatientAppointments("patient-id");
 
-      expect(result).toEqual(mockAppointments);
+      // Agora esperamos strings ISO em vez de objetos Date
+      expect(result[0].startTime).toBe("2024-01-01T08:00:00.000Z");
+      expect(result[0].endTime).toBe("2024-01-01T08:00:00.000Z");
       expect(prisma.appointment.findMany).toHaveBeenCalledWith({
         where: { patientId: "patient-id" },
         select: expect.any(Object),
@@ -313,7 +316,9 @@ describe("appointmentService", () => {
 
       const result = await getDoctorAppointments("doctor-id");
 
-      expect(result).toEqual(mockAppointments);
+      // Agora esperamos strings ISO em vez de objetos Date
+      expect(result[0].startTime).toBe("2024-01-01T08:00:00.000Z");
+      expect(result[0].endTime).toBe("2024-01-01T08:00:00.000Z");
       expect(prisma.appointment.findMany).toHaveBeenCalledWith({
         where: { doctorId: "doctor-id" },
         select: expect.any(Object),
@@ -534,7 +539,9 @@ describe("appointmentService", () => {
 
       const result = await getAppointmentById("appointment-id");
 
-      expect(result).toEqual(mockAppointment);
+      // Agora esperamos strings ISO em vez de objetos Date
+      expect(result?.startTime).toBe("2024-01-01T08:00:00.000Z");
+      expect(result?.endTime).toBe("2024-01-01T08:00:00.000Z");
     });
 
     it("deve retornar null se agendamento não existir", async () => {
