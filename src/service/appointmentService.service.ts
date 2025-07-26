@@ -63,6 +63,66 @@ export async function checkSlotAvailability(
       .format("HH:mm")}`
   );
 
+  // Verificar se o horário está dentro da disponibilidade do médico
+  const appointmentDate = moment(startTime).tz(TIMEZONE);
+  const dayOfWeek = appointmentDate.day();
+
+  const availability = await prisma.availability.findFirst({
+    where: {
+      doctorId,
+      dayOfWeek,
+      isActive: true
+    }
+  });
+
+  if (!availability) {
+    throw new BadRequest(
+      "Médico não possui disponibilidade para este dia da semana"
+    );
+  }
+
+  const [availStartHour, availStartMin] = availability.startTime
+    .split(":")
+    .map(Number);
+  const [availEndHour, availEndMin] = availability.endTime
+    .split(":")
+    .map(Number);
+
+  const availabilityStart = appointmentDate
+    .clone()
+    .hour(availStartHour)
+    .minute(availStartMin);
+  const availabilityEnd = appointmentDate
+    .clone()
+    .hour(availEndHour)
+    .minute(availEndMin);
+
+  const appointmentStart = moment(startTime).tz(TIMEZONE);
+  const appointmentEnd = moment(endTime).tz(TIMEZONE);
+
+  console.log(
+    `📅 Disponibilidade do médico: ${availabilityStart.format(
+      "HH:mm"
+    )} - ${availabilityEnd.format("HH:mm")}`
+  );
+  console.log(
+    `📅 Horário solicitado: ${appointmentStart.format(
+      "HH:mm"
+    )} - ${appointmentEnd.format("HH:mm")}`
+  );
+
+  // Verificar se o agendamento está dentro da disponibilidade
+  if (
+    appointmentStart.isBefore(availabilityStart) ||
+    appointmentEnd.isAfter(availabilityEnd)
+  ) {
+    throw new BadRequest(
+      `Horário fora da disponibilidade do médico (${availabilityStart.format(
+        "HH:mm"
+      )} - ${availabilityEnd.format("HH:mm")})`
+    );
+  }
+
   const conflictingAppointment = await prisma.appointment.findFirst({
     where: {
       doctorId,
@@ -188,6 +248,14 @@ export async function generateAvailableSlots(doctorId: string, date: string) {
   const startOfDay = requestedDate.clone().startOf("day").toDate();
   const endOfDay = requestedDate.clone().endOf("day").toDate();
 
+  console.log(
+    `🔍 Buscando agendamentos entre: ${moment(startOfDay)
+      .tz(TIMEZONE)
+      .format("DD/MM/YYYY HH:mm")} e ${moment(endOfDay)
+      .tz(TIMEZONE)
+      .format("DD/MM/YYYY HH:mm")}`
+  );
+
   const existingAppointments = await prisma.appointment.findMany({
     where: {
       doctorId,
@@ -210,11 +278,11 @@ export async function generateAvailableSlots(doctorId: string, date: string) {
   console.log(`Total de agendamentos: ${existingAppointments.length}`);
   existingAppointments.forEach((appointment, index) => {
     console.log(
-      `${index + 1}. ${moment(appointment.startTime).format(
-        "HH:mm"
-      )} - ${moment(appointment.endTime).format("HH:mm")} (${
-        appointment.status
-      })`
+      `${index + 1}. ${moment(appointment.startTime)
+        .tz(TIMEZONE)
+        .format("HH:mm")} - ${moment(appointment.endTime)
+        .tz(TIMEZONE)
+        .format("HH:mm")} (${appointment.status})`
     );
   });
   console.log("==========================================");
@@ -426,6 +494,55 @@ export async function generateAvailableSlots(doctorId: string, date: string) {
   console.log(`=== FIM GERAÇÃO DE SLOTS ===\n`);
 
   return slots;
+}
+
+// Função para corrigir agendamentos com timezone incorreto (usar apenas uma vez)
+export async function fixAppointmentTimezones() {
+  console.log("🔧 Iniciando correção de timezones dos agendamentos...");
+
+  const appointments = await prisma.appointment.findMany({
+    where: {
+      status: {
+        notIn: ["cancelled", "no_show"]
+      }
+    }
+  });
+
+  console.log(
+    `📋 Encontrados ${appointments.length} agendamentos para verificar`
+  );
+
+  for (const appointment of appointments) {
+    const originalStart = moment(appointment.startTime);
+    const originalEnd = moment(appointment.endTime);
+
+    // Se o horário está em UTC (3 horas a menos), corrigir para BRT
+    const correctedStart = moment(appointment.startTime).tz(TIMEZONE);
+    const correctedEnd = moment(appointment.endTime).tz(TIMEZONE);
+
+    console.log(`🔄 Agendamento ${appointment.id}:`);
+    console.log(
+      `   Original: ${originalStart.format(
+        "DD/MM/YYYY HH:mm"
+      )} - ${originalEnd.format("HH:mm")}`
+    );
+    console.log(
+      `   Corrigido: ${correctedStart.format(
+        "DD/MM/YYYY HH:mm"
+      )} - ${correctedEnd.format("HH:mm")}`
+    );
+
+    // Atualizar no banco
+    await prisma.appointment.update({
+      where: { id: appointment.id },
+      data: {
+        startTime: correctedStart.toDate(),
+        endTime: correctedEnd.toDate()
+      }
+    });
+  }
+
+  console.log("✅ Correção de timezones concluída!");
 }
 
 // Criar agendamento

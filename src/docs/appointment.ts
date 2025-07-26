@@ -416,6 +416,22 @@ export class appointmentDocs {
       }
     }
   };
+
+  static fixAppointmentTimezones = {
+    schema: {
+      tags: ["Appointment"],
+      summary: "Corrigir timezones dos agendamentos",
+      description:
+        "Corrige os timezones de todos os agendamentos existentes (usar apenas uma vez)",
+      response: {
+        200: z.object({
+          status: z.literal("success"),
+          message: z.string()
+        }),
+        500: errorResponseSchema
+      }
+    }
+  };
 }
 
 export class attendanceDocs {

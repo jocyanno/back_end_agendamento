@@ -13,7 +13,8 @@ import {
   deleteAvailability,
   cancelAppointmentByAttendantController,
   checkPatientDoctorAvailability,
-  getUserAppointments
+  getUserAppointments,
+  fixAppointmentTimezonesController
 } from "@/controllers/appointmentController";
 import { appointmentDocs } from "@/docs/appointment";
 
@@ -93,6 +94,14 @@ export async function appointmentRoutes(app: FastifyInstance) {
       "/appointments/check-availability/:patientId/:doctorId",
       appointmentDocs.checkPatientDoctorAvailability,
       checkPatientDoctorAvailability
+    );
+
+  app
+    .withTypeProvider<ZodTypeProvider>()
+    .post(
+      "/appointments/fix-timezones",
+      appointmentDocs.fixAppointmentTimezones,
+      fixAppointmentTimezonesController
     );
 
   // Rotas de disponibilidade

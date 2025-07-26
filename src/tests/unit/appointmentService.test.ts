@@ -78,6 +78,18 @@ describe("appointmentService", () => {
 
   describe("checkSlotAvailability", () => {
     it("deve permitir agendamento em horário livre", async () => {
+      // Mock da disponibilidade do médico
+      vi.mocked(prisma.availability.findFirst).mockResolvedValue({
+        id: "availability-id",
+        doctorId: "doctor-id",
+        dayOfWeek: 1,
+        startTime: "08:00",
+        endTime: "17:00",
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
       vi.mocked(prisma.appointment.findFirst).mockResolvedValue(null);
 
       await expect(
@@ -86,6 +98,18 @@ describe("appointmentService", () => {
     });
 
     it("deve lançar erro se horário estiver ocupado", async () => {
+      // Mock da disponibilidade do médico
+      vi.mocked(prisma.availability.findFirst).mockResolvedValue({
+        id: "availability-id",
+        doctorId: "doctor-id",
+        dayOfWeek: 1,
+        startTime: "08:00",
+        endTime: "17:00",
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
       vi.mocked(prisma.appointment.findFirst).mockResolvedValue({
         id: "appointment-id",
         patientId: "patient-id",
@@ -163,6 +187,18 @@ describe("appointmentService", () => {
       vi.mocked(prisma.users.findUnique)
         .mockResolvedValueOnce(mockPatient as any)
         .mockResolvedValueOnce(mockDoctor as any);
+
+      // Mock da disponibilidade do médico
+      vi.mocked(prisma.availability.findFirst).mockResolvedValue({
+        id: "availability-id",
+        doctorId: "doctor-id",
+        dayOfWeek: 1,
+        startTime: "08:00",
+        endTime: "17:00",
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
 
       vi.mocked(prisma.appointment.findFirst).mockResolvedValue(null);
       vi.mocked(prisma.appointment.create).mockResolvedValue(

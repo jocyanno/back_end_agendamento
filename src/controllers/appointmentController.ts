@@ -2,15 +2,17 @@ import { FastifyReply, FastifyRequest } from "fastify";
 import { AuthenticatedRequest } from "@/types/AuthenticatedRequest";
 import {
   createAppointment,
-  generateAvailableSlots,
   getPatientAppointments,
   getDoctorAppointments,
   updateAppointmentStatus,
   createDoctorAvailability,
   getDoctorAvailability,
+  generateAvailableSlots,
+  getAppointmentById,
   deleteDoctorAvailability,
   cancelAppointmentByAttendant,
-  canPatientScheduleWithDoctor
+  canPatientScheduleWithDoctor,
+  fixAppointmentTimezones
 } from "@/service/appointmentService.service";
 import { AppointmentStatus } from "@prisma/client";
 import moment from "moment-timezone";
@@ -482,6 +484,27 @@ export async function checkPatientDoctorAvailability(
     return reply.status(500).send({
       status: "error",
       message: "Erro interno do servidor"
+    });
+  }
+}
+
+// Corrigir timezones dos agendamentos (usar apenas uma vez)
+export async function fixAppointmentTimezonesController(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  try {
+    await fixAppointmentTimezones();
+
+    return reply.status(200).send({
+      status: "success",
+      message: "Timezones dos agendamentos corrigidos com sucesso"
+    });
+  } catch (error: any) {
+    console.error("Erro ao corrigir timezones:", error);
+    return reply.status(500).send({
+      status: "error",
+      message: error.message || "Erro interno do servidor"
     });
   }
 }
