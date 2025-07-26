@@ -8,12 +8,8 @@ exports.updateUsuario = updateUsuario;
 exports.getDoctors = getDoctors;
 exports.getAllUsuarios = getAllUsuarios;
 exports.getUsuarioById = getUsuarioById;
-exports.getUsuariosByRegistrar = getUsuariosByRegistrar;
 exports.updateUsuarioByDoctor = updateUsuarioByDoctor;
 exports.deleteUsuario = deleteUsuario;
-exports.getPacientesByDoctor = getPacientesByDoctor;
-exports.createPacienteForDoctor = createPacienteForDoctor;
-exports.getFormData = getFormData;
 const usuarioService_service_1 = require("../service/usuarioService.service");
 async function getUsuario(request, reply) {
     const usuario = await (0, usuarioService_service_1.getUsuarioLogado)(request);
@@ -63,8 +59,7 @@ async function createUsuario(request, reply) {
             email: parseResult.email,
             cpf: parseResult.cpf
         });
-        // Usar o registeredBy enviado no JSON ou undefined se não fornecido
-        const createUsuario = await (0, usuarioService_service_1.createUser)(parseResult, parseResult.registeredBy || undefined);
+        const createUsuario = await (0, usuarioService_service_1.createUser)(parseResult);
         const token = request.server.jwt.sign({ userId: createUsuario.id, register: createUsuario.register }, { expiresIn: "7d" });
         console.log("Usuário criado com sucesso:", createUsuario.email);
         return reply.status(200).send({
@@ -89,8 +84,7 @@ async function createUsuarioAdmin(request, reply) {
         email: parseResult.email,
         cpf: parseResult.cpf
     });
-    // Passar o ID do admin como registeredBy
-    const createUsuario = await (0, usuarioService_service_1.createUserAdmin)(parseResult, admin.id);
+    const createUsuario = await (0, usuarioService_service_1.createUserAdmin)(parseResult);
     const token = request.server.jwt.sign({ userId: createUsuario.id, register: createUsuario.register }, { expiresIn: "7d" });
     return reply.status(200).send({
         status: "success",
@@ -115,7 +109,7 @@ async function getDoctors(request, reply) {
 }
 async function getAllUsuarios(request, reply) {
     // Verificar se o usuário logado é doctor
-    await (0, usuarioService_service_1.getUsuarioLogadoIsAdmin)(request);
+    await (0, usuarioService_service_1.getUsuarioLogadoIsAdminOrAttendant)(request);
     const users = await (0, usuarioService_service_1.getAllUsers)();
     return reply.status(200).send({
         status: "success",
@@ -130,15 +124,6 @@ async function getUsuarioById(request, reply) {
     return reply.status(200).send({
         status: "success",
         data: user
-    });
-}
-async function getUsuariosByRegistrar(request, reply) {
-    await (0, usuarioService_service_1.getUsuarioLogadoIsAdmin)(request);
-    const doctor = await (0, usuarioService_service_1.getUsuarioLogadoIsAdmin)(request);
-    const users = await (0, usuarioService_service_1.getUsersByRegistrar)(doctor.id);
-    return reply.status(200).send({
-        status: "success",
-        data: users
     });
 }
 async function updateUsuarioByDoctor(request, reply) {
@@ -163,81 +148,5 @@ async function deleteUsuario(request, reply) {
         status: "success",
         data: result
     });
-}
-// Buscar pacientes de um médico (attendant)
-async function getPacientesByDoctor(request, reply) {
-    // Verificar se o usuário logado é attendant
-    const attendant = await (0, usuarioService_service_1.getUsuarioLogado)(request);
-    if (attendant.register !== "attendant") {
-        return reply.status(403).send({
-            status: "error",
-            message: "Apenas atendentes podem acessar esta rota"
-        });
-    }
-    const { doctorId } = request.params;
-    const patients = await (0, usuarioService_service_1.getPatientsByDoctor)(doctorId);
-    return reply.status(200).send({
-        status: "success",
-        data: patients
-    });
-}
-// Criar paciente para um médico (attendant)
-async function createPacienteForDoctor(request, reply) {
-    try {
-        // Verificar se o usuário logado é attendant
-        const attendant = await (0, usuarioService_service_1.getUsuarioLogado)(request);
-        if (attendant.register !== "attendant") {
-            return reply.status(403).send({
-                status: "error",
-                message: "Apenas atendentes podem criar pacientes"
-            });
-        }
-        const { doctorId } = request.params;
-        const parseResult = request.body;
-        console.log("Dados recebidos:", JSON.stringify(parseResult, null, 2));
-        await (0, usuarioService_service_1.getUserExisting)({
-            email: parseResult.email,
-            cpf: parseResult.cpf
-        });
-        const createPaciente = await (0, usuarioService_service_1.createPatientForDoctor)(parseResult, doctorId);
-        return reply.status(201).send({
-            status: "success",
-            data: { paciente: createPaciente }
-        });
-    }
-    catch (error) {
-        console.error("Erro na criação de paciente:", error);
-        return reply.status(400).send({
-            status: "error",
-            message: error instanceof Error ? error.message : "Validation error"
-        });
-    }
-}
-// Obter dados para formulário de criação de usuário
-async function getFormData(request, reply) {
-    try {
-        // Buscar médicos disponíveis para o campo registeredBy
-        const doctors = await (0, usuarioService_service_1.getAllDoctors)();
-        // Definir tipos de registro disponíveis
-        const registerTypes = [
-            { value: "patient", label: "Paciente" },
-            { value: "parents", label: "Responsável" },
-            { value: "attendant", label: "Atendente" }
-        ];
-        return reply.status(200).send({
-            status: "success",
-            data: {
-                doctors,
-                registerTypes
-            }
-        });
-    }
-    catch (error) {
-        console.error("Erro ao buscar dados do formulário:", error);
-        return reply.status(500).send({
-            status: "error",
-            message: "Erro interno do servidor"
-        });
-    }
 }
 //# sourceMappingURL=usuarioController.js.map

@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getUsuarioLogadoIsAdmin = exports.getUsuarioLogado = exports.selectUsuario = void 0;
+exports.getUsuarioLogadoIsAdminOrAttendant = exports.getUsuarioLogadoIsAdmin = exports.getUsuarioLogado = exports.selectUsuario = void 0;
 exports.authenticateUser = authenticateUser;
 exports.searchUsuario = searchUsuario;
 exports.getUserById = getUserById;
@@ -14,11 +14,9 @@ exports.createUserAdmin = createUserAdmin;
 exports.updateUser = updateUser;
 exports.getAllUsers = getAllUsers;
 exports.getAllDoctors = getAllDoctors;
-exports.getUsersByRegistrar = getUsersByRegistrar;
 exports.updateUserByDoctor = updateUserByDoctor;
 exports.deleteUser = deleteUser;
-exports.getPatientsByDoctor = getPatientsByDoctor;
-exports.createPatientForDoctor = createPatientForDoctor;
+exports.getDoctorAvailability = getDoctorAvailability;
 const prisma_1 = require("../lib/prisma");
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const unauthorized_1 = require("../_errors/unauthorized");
@@ -89,6 +87,15 @@ const getUsuarioLogadoIsAdmin = async (request) => {
     return searchUsuario(usuarioId);
 };
 exports.getUsuarioLogadoIsAdmin = getUsuarioLogadoIsAdmin;
+const getUsuarioLogadoIsAdminOrAttendant = async (request) => {
+    const { id: usuarioId, register } = request.usuario;
+    // Verifica diretamente do token se é doctor, mais eficiente
+    if (register !== "doctor" && register !== "attendant") {
+        throw new unauthorized_1.Unauthorized("User is not doctor");
+    }
+    return searchUsuario(usuarioId);
+};
+exports.getUsuarioLogadoIsAdminOrAttendant = getUsuarioLogadoIsAdminOrAttendant;
 async function getUserById(usuarioId) {
     const user = await prisma_1.prisma.users.findUnique({
         where: {
@@ -155,7 +162,7 @@ async function createUser(data) {
                     ? (0, moment_timezone_1.default)(data.birthDate).toDate()
                     : null
                 : null,
-            password: hashedPassword,
+            password: hashedPassword
         },
         select: exports.selectUsuario
     });
@@ -244,9 +251,14 @@ async function updateUser(usuarioId, data) {
 }
 async function getAllUsers() {
     const users = await prisma_1.prisma.users.findMany({
+        where: {
+            OR: [
+                { register: "patient" },
+                { register: "parents" }
+            ]
+        },
         select: exports.selectUsuario,
         orderBy: [
-            { register: "desc" }, // doctors primeiro
             { name: "asc" }
         ]
     });
@@ -361,35 +373,15 @@ async function deleteUser(usuarioId, adminId) {
     });
     return { message: "User deleted successfully" };
 }
-// Criar paciente para um médico específico (para attendant)
-async function createPatientForDoctor(data, doctorId) {
-    if (!data.password) {
-        throw new bad_request_1.BadRequest("Password is required");
-    }
-    // Verificar se o médico existe
-    const doctor = await prisma_1.prisma.users.findUnique({
+// Buscar disponibilidades do médico
+async function getDoctorAvailability(doctorId) {
+    const availabilities = await prisma_1.prisma.availability.findMany({
         where: {
-            id: doctorId,
-            register: "doctor"
-        }
-    });
-    if (!doctor) {
-        throw new not_found_1.NotFound("Médico não encontrado");
-    }
-    const hashedPassword = await bcrypt_1.default.hash(data.password, 10);
-    const user = await prisma_1.prisma.users.create({
-        data: {
-            ...data,
-            register: "patient", // Forçar como paciente
-            birthDate: data.birthDate
-                ? (0, moment_timezone_1.default)(data.birthDate).isValid()
-                    ? (0, moment_timezone_1.default)(data.birthDate).toDate()
-                    : null
-                : null,
-            password: hashedPassword,
+            doctorId,
+            isActive: true
         },
-        select: exports.selectUsuario
+        orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }]
     });
-    return user;
+    return availabilities;
 }
 //# sourceMappingURL=usuarioService.service.js.map

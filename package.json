@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
-    "build": "tsc && tsc-alias -p tsconfig.json",
+    "build": "tsup src/**/*.ts --out-dir build",
     "test": "vitest run src/tests/unit",
     "test:unit": "vitest run src/tests/unit",
     "test:integration": "vitest run src/tests/e2e",

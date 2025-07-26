@@ -43,6 +43,7 @@ vitest_1.vi.mock("moment-timezone", () => ({
         second: vitest_1.vi.fn().mockReturnThis(),
         millisecond: vitest_1.vi.fn().mockReturnThis(),
         add: vitest_1.vi.fn().mockReturnThis(),
+        subtract: vitest_1.vi.fn().mockReturnThis(),
         day: vitest_1.vi.fn(() => 1),
         diff: vitest_1.vi.fn(() => 25),
         toISOString: vitest_1.vi.fn(() => "2024-01-01T08:00:00.000Z")
@@ -58,36 +59,45 @@ const prisma_1 = require("../../lib/prisma");
     (0, vitest_1.beforeEach)(() => {
         vitest_1.vi.clearAllMocks();
     });
-    (0, vitest_1.describe)("checkWeeklyAppointmentLimit", () => {
-        (0, vitest_1.it)("deve permitir agendamento se não houver conflito semanal", async () => {
-            vitest_1.vi.mocked(prisma_1.prisma.appointment.findFirst).mockResolvedValue(null);
-            await (0, vitest_1.expect)((0, appointmentService_service_1.checkWeeklyAppointmentLimit)("patient-id", new Date())).resolves.not.toThrow();
-        });
-        (0, vitest_1.it)("deve lançar erro se já houver agendamento na semana", async () => {
-            vitest_1.vi.mocked(prisma_1.prisma.appointment.findFirst).mockResolvedValue({
-                id: "appointment-id",
-                patientId: "patient-id",
-                doctorId: "doctor-id",
-                startTime: new Date(),
-                endTime: new Date(),
-                status: "scheduled"
-            });
-            await (0, vitest_1.expect)((0, appointmentService_service_1.checkWeeklyAppointmentLimit)("patient-id", new Date())).rejects.toThrow("Paciente já possui consulta agendada nesta semana");
-        });
-    });
     (0, vitest_1.describe)("checkSlotAvailability", () => {
         (0, vitest_1.it)("deve permitir agendamento em horário livre", async () => {
+            // Mock da disponibilidade do médico
+            vitest_1.vi.mocked(prisma_1.prisma.availability.findFirst).mockResolvedValue({
+                id: "availability-id",
+                doctorId: "doctor-id",
+                dayOfWeek: 1,
+                startTime: "08:00",
+                endTime: "17:00",
+                isActive: true,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            });
             vitest_1.vi.mocked(prisma_1.prisma.appointment.findFirst).mockResolvedValue(null);
             await (0, vitest_1.expect)((0, appointmentService_service_1.checkSlotAvailability)("doctor-id", new Date(), new Date())).resolves.not.toThrow();
         });
         (0, vitest_1.it)("deve lançar erro se horário estiver ocupado", async () => {
+            // Mock da disponibilidade do médico
+            vitest_1.vi.mocked(prisma_1.prisma.availability.findFirst).mockResolvedValue({
+                id: "availability-id",
+                doctorId: "doctor-id",
+                dayOfWeek: 1,
+                startTime: "08:00",
+                endTime: "17:00",
+                isActive: true,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            });
             vitest_1.vi.mocked(prisma_1.prisma.appointment.findFirst).mockResolvedValue({
                 id: "appointment-id",
                 patientId: "patient-id",
                 doctorId: "doctor-id",
                 startTime: new Date(),
                 endTime: new Date(),
-                status: "scheduled"
+                status: "scheduled",
+                patient: {
+                    id: "patient-id",
+                    name: "Test Patient"
+                }
             });
             await (0, vitest_1.expect)((0, appointmentService_service_1.checkSlotAvailability)("doctor-id", new Date(), new Date())).rejects.toThrow(bad_request_1.BadRequest);
         });
@@ -140,6 +150,17 @@ const prisma_1 = require("../../lib/prisma");
             vitest_1.vi.mocked(prisma_1.prisma.users.findUnique)
                 .mockResolvedValueOnce(mockPatient)
                 .mockResolvedValueOnce(mockDoctor);
+            // Mock da disponibilidade do médico
+            vitest_1.vi.mocked(prisma_1.prisma.availability.findFirst).mockResolvedValue({
+                id: "availability-id",
+                doctorId: "doctor-id",
+                dayOfWeek: 1,
+                startTime: "08:00",
+                endTime: "17:00",
+                isActive: true,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            });
             vitest_1.vi.mocked(prisma_1.prisma.appointment.findFirst).mockResolvedValue(null);
             vitest_1.vi.mocked(prisma_1.prisma.appointment.create).mockResolvedValue(mockAppointment);
             vitest_1.vi.mocked(prisma_1.prisma.appointment.update).mockResolvedValue(mockAppointment);
@@ -192,7 +213,9 @@ const prisma_1 = require("../../lib/prisma");
             ];
             vitest_1.vi.mocked(prisma_1.prisma.appointment.findMany).mockResolvedValue(mockAppointments);
             const result = await (0, appointmentService_service_1.getPatientAppointments)("patient-id");
-            (0, vitest_1.expect)(result).toEqual(mockAppointments);
+            // Agora esperamos strings ISO em vez de objetos Date
+            (0, vitest_1.expect)(result[0].startTime).toBe("2024-01-01T08:00:00.000Z");
+            (0, vitest_1.expect)(result[0].endTime).toBe("2024-01-01T08:00:00.000Z");
             (0, vitest_1.expect)(prisma_1.prisma.appointment.findMany).toHaveBeenCalledWith({
                 where: { patientId: "patient-id" },
                 select: vitest_1.expect.any(Object),
@@ -223,7 +246,9 @@ const prisma_1 = require("../../lib/prisma");
             ];
             vitest_1.vi.mocked(prisma_1.prisma.appointment.findMany).mockResolvedValue(mockAppointments);
             const result = await (0, appointmentService_service_1.getDoctorAppointments)("doctor-id");
-            (0, vitest_1.expect)(result).toEqual(mockAppointments);
+            // Agora esperamos strings ISO em vez de objetos Date
+            (0, vitest_1.expect)(result[0].startTime).toBe("2024-01-01T08:00:00.000Z");
+            (0, vitest_1.expect)(result[0].endTime).toBe("2024-01-01T08:00:00.000Z");
             (0, vitest_1.expect)(prisma_1.prisma.appointment.findMany).toHaveBeenCalledWith({
                 where: { doctorId: "doctor-id" },
                 select: vitest_1.expect.any(Object),
@@ -373,7 +398,9 @@ const prisma_1 = require("../../lib/prisma");
             };
             vitest_1.vi.mocked(prisma_1.prisma.appointment.findUnique).mockResolvedValue(mockAppointment);
             const result = await (0, appointmentService_service_1.getAppointmentById)("appointment-id");
-            (0, vitest_1.expect)(result).toEqual(mockAppointment);
+            // Agora esperamos strings ISO em vez de objetos Date
+            (0, vitest_1.expect)(result?.startTime).toBe("2024-01-01T08:00:00.000Z");
+            (0, vitest_1.expect)(result?.endTime).toBe("2024-01-01T08:00:00.000Z");
         });
         (0, vitest_1.it)("deve retornar null se agendamento não existir", async () => {
             vitest_1.vi.mocked(prisma_1.prisma.appointment.findUnique).mockResolvedValue(null);

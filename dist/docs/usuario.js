@@ -32,32 +32,12 @@ usuarioDocs.getUsuario = {
 usuarioDocs.getDoctors = {
     schema: {
         tags: ["Usuario"],
-        summary: "Listar médicos disponíveis",
+        summary: "Listar todos os médicos",
         description: "Retorna todos os médicos cadastrados no sistema",
         response: {
             200: v4_1.z.object({
                 status: v4_1.z.literal("success"),
                 data: v4_1.z.array(usuario_1.responseDoctorSchema)
-            }),
-            500: errorResponseSchema
-        }
-    }
-};
-usuarioDocs.getFormData = {
-    schema: {
-        tags: ["Usuario"],
-        summary: "Obter dados para formulário de criação de usuário",
-        description: "Retorna médicos e tipos de registro disponíveis para o formulário",
-        response: {
-            200: v4_1.z.object({
-                status: v4_1.z.literal("success"),
-                data: v4_1.z.object({
-                    doctors: v4_1.z.array(usuario_1.responseDoctorSchema),
-                    registerTypes: v4_1.z.array(v4_1.z.object({
-                        value: v4_1.z.string(),
-                        label: v4_1.z.string()
-                    }))
-                })
             }),
             500: errorResponseSchema
         }
@@ -77,71 +57,6 @@ usuarioDocs.getAllUsuarios = {
             }),
             401: errorResponseSchema,
             403: errorResponseSchema,
-            500: errorResponseSchema
-        }
-    }
-};
-usuarioDocs.getUsuariosByRegistrar = {
-    preHandler: [auth_1.autenticarToken],
-    schema: {
-        tags: ["Usuario"],
-        summary: "Listar usuários registrados por um médico",
-        description: "Retorna todos os usuários registrados por um médico específico (apenas médicos podem acessar)",
-        headers: scheme_1.headersSchema,
-        response: {
-            200: v4_1.z.object({
-                status: v4_1.z.literal("success"),
-                data: v4_1.z.array(usuario_1.responseUsuarioSchema)
-            }),
-            401: errorResponseSchema,
-            403: errorResponseSchema,
-            500: errorResponseSchema
-        }
-    }
-};
-usuarioDocs.getPacientesByDoctor = {
-    preHandler: [auth_1.autenticarToken],
-    schema: {
-        tags: ["Usuario"],
-        summary: "Listar pacientes de um médico (attendant)",
-        description: "Retorna todos os pacientes registrados por um médico específico (apenas atendentes podem acessar)",
-        headers: scheme_1.headersSchema,
-        params: v4_1.z.object({
-            doctorId: v4_1.z.string().describe("ID do médico")
-        }),
-        response: {
-            200: v4_1.z.object({
-                status: v4_1.z.literal("success"),
-                data: v4_1.z.array(usuario_1.responseUsuarioSchema)
-            }),
-            401: errorResponseSchema,
-            403: errorResponseSchema,
-            500: errorResponseSchema
-        }
-    }
-};
-usuarioDocs.createPacienteForDoctor = {
-    preHandler: [auth_1.autenticarToken],
-    schema: {
-        tags: ["Usuario"],
-        summary: "Criar paciente para um médico (attendant)",
-        description: "Permite que atendentes criem pacientes para um médico específico. O paciente será automaticamente registrado pelo médico.",
-        headers: scheme_1.headersSchema,
-        params: v4_1.z.object({
-            doctorId: v4_1.z.string().describe("ID do médico")
-        }),
-        body: usuario_1.requestUsuarioSchema,
-        response: {
-            201: v4_1.z.object({
-                status: v4_1.z.literal("success"),
-                data: v4_1.z.object({
-                    paciente: usuario_1.responseUsuarioSchema
-                })
-            }),
-            400: errorResponseSchema,
-            401: errorResponseSchema,
-            403: errorResponseSchema,
-            404: errorResponseSchema,
             500: errorResponseSchema
         }
     }

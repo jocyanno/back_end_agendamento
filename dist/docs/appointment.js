@@ -57,7 +57,7 @@ appointmentDocs.postAppointment = {
     schema: {
         tags: ["Appointment"],
         summary: "Criar novo agendamento",
-        description: "Cria um novo agendamento. Pacientes podem agendar apenas 1 consulta por semana.",
+        description: "Cria um novo agendamento. Pacientes podem agendar múltiplas consultas conforme disponibilidade.",
         headers: scheme_1.headersSchema,
         body: appointment_1.createAppointmentSchema,
         response: {
@@ -67,6 +67,30 @@ appointmentDocs.postAppointment = {
             }),
             400: errorResponseSchema,
             401: errorResponseSchema,
+            500: errorResponseSchema
+        }
+    }
+};
+appointmentDocs.getAvailableSlotsByPeriod = {
+    schema: {
+        tags: ["Appointment"],
+        summary: "Buscar horários disponíveis por período",
+        description: "Retorna os horários disponíveis de um médico em uma data específica usando startDate e endDate (compatibilidade com frontend)",
+        querystring: v4_1.z.object({
+            startDate: v4_1.z.string().describe("Data de início no formato ISO"),
+            endDate: v4_1.z.string().describe("Data de fim no formato ISO"),
+            doctorId: v4_1.z.string().describe("ID do médico")
+        }),
+        response: {
+            200: v4_1.z.object({
+                status: v4_1.z.literal("success"),
+                data: v4_1.z.array(v4_1.z.object({
+                    startTime: v4_1.z.string(),
+                    endTime: v4_1.z.string(),
+                    available: v4_1.z.boolean()
+                }))
+            }),
+            400: errorResponseSchema,
             500: errorResponseSchema
         }
     }
@@ -124,7 +148,13 @@ appointmentDocs.putAppointmentStatus = {
             id: v4_1.z.string().describe("ID do agendamento")
         }),
         body: v4_1.z.object({
-            status: v4_1.z.enum(["scheduled", "confirmed", "cancelled", "completed", "no_show"])
+            status: v4_1.z.enum([
+                "scheduled",
+                "confirmed",
+                "cancelled",
+                "completed",
+                "no_show"
+            ])
         }),
         response: {
             200: v4_1.z.object({
@@ -260,6 +290,103 @@ appointmentDocs.postAppointmentForPatient = {
             400: errorResponseSchema,
             401: errorResponseSchema,
             403: errorResponseSchema,
+            500: errorResponseSchema
+        }
+    }
+};
+appointmentDocs.getUserAppointments = {
+    preHandler: [auth_1.autenticarToken],
+    schema: {
+        tags: ["Appointment"],
+        summary: "Buscar agendamentos de um usuário (atendente)",
+        description: "Permite que atendentes busquem agendamentos de um usuário específico pelo ID",
+        headers: scheme_1.headersSchema,
+        params: v4_1.z.object({
+            userId: v4_1.z.string().describe("ID do usuário")
+        }),
+        querystring: v4_1.z.object({
+            status: v4_1.z
+                .enum(["scheduled", "confirmed", "completed", "cancelled", "no_show"])
+                .optional()
+                .describe("Filtrar por status do agendamento")
+        }),
+        response: {
+            200: v4_1.z.object({
+                status: v4_1.z.literal("success"),
+                data: v4_1.z.array(appointment_1.responseAppointmentWithUsersSchema)
+            }),
+            401: errorResponseSchema,
+            403: errorResponseSchema,
+            500: errorResponseSchema
+        }
+    }
+};
+appointmentDocs.checkPatientDoctorAvailability = {
+    schema: {
+        tags: ["Appointment"],
+        summary: "Verificar se paciente pode agendar com profissional",
+        description: "Verifica se um paciente pode agendar com um profissional específico (sempre permite agendamento)",
+        params: v4_1.z.object({
+            patientId: v4_1.z.string().describe("ID do paciente"),
+            doctorId: v4_1.z.string().describe("ID do profissional")
+        }),
+        response: {
+            200: v4_1.z.object({
+                status: v4_1.z.literal("success"),
+                data: v4_1.z.object({
+                    canSchedule: v4_1.z.boolean(),
+                    reason: v4_1.z.string().optional(),
+                    existingAppointment: v4_1.z
+                        .object({
+                        id: v4_1.z.string(),
+                        startTime: v4_1.z.string(),
+                        endTime: v4_1.z.string(),
+                        status: v4_1.z.string(),
+                        doctor: v4_1.z.object({
+                            id: v4_1.z.string(),
+                            name: v4_1.z.string()
+                        })
+                    })
+                        .optional()
+                })
+            }),
+            500: errorResponseSchema
+        }
+    }
+};
+appointmentDocs.generateAvailableSlots = {
+    schema: {
+        tags: ["Appointment"],
+        summary: "Gerar horários disponíveis",
+        description: "Gera horários disponíveis para um médico em uma data específica",
+        params: v4_1.z.object({
+            doctorId: v4_1.z.string().describe("ID do médico"),
+            date: v4_1.z.string().describe("Data no formato YYYY-MM-DD")
+        }),
+        response: {
+            200: v4_1.z.object({
+                status: v4_1.z.literal("success"),
+                data: v4_1.z.array(v4_1.z.object({
+                    time: v4_1.z.string(),
+                    available: v4_1.z.boolean()
+                }))
+            }),
+            400: errorResponseSchema,
+            404: errorResponseSchema,
+            500: errorResponseSchema
+        }
+    }
+};
+appointmentDocs.fixAppointmentTimezones = {
+    schema: {
+        tags: ["Appointment"],
+        summary: "Corrigir timezones dos agendamentos",
+        description: "Corrige os timezones de todos os agendamentos existentes (usar apenas uma vez)",
+        response: {
+            200: v4_1.z.object({
+                status: v4_1.z.literal("success"),
+                message: v4_1.z.string()
+            }),
             500: errorResponseSchema
         }
     }

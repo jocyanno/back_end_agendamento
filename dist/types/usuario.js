@@ -21,7 +21,6 @@ exports.responseUsuarioSchemaProps = {
     country: v4_1.z.string().nullish(),
     cid: v4_1.z.string().nullish(),
     register: schemaRegister,
-    registeredBy: v4_1.z.string().nullish(),
     createdAt: v4_1.z.coerce.string().or(v4_1.z.date()).transform(formatDate_1.formatDate).nullish(),
     updatedAt: v4_1.z.coerce.string().or(v4_1.z.date()).transform(formatDate_1.formatDate).nullish()
 };
@@ -59,7 +58,6 @@ exports.responseDoctorSchema = v4_1.z.object({
     state: v4_1.z.string().nullish(),
     cid: v4_1.z.string().nullish(),
     register: schemaRegister,
-    registeredBy: v4_1.z.string().nullish(),
     createdAt: v4_1.z.coerce.string().or(v4_1.z.date()).transform(formatDate_1.formatDate).nullish()
 });
 //# sourceMappingURL=usuario.js.map

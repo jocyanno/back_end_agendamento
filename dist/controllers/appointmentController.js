@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.postAppointment = postAppointment;
+exports.getAvailableSlotsByPeriod = getAvailableSlotsByPeriod;
 exports.getAvailableSlots = getAvailableSlots;
 exports.getMyAppointments = getMyAppointments;
 exports.putAppointmentStatus = putAppointmentStatus;
@@ -13,6 +14,9 @@ exports.getTodayAppointments = getTodayAppointments;
 exports.postAppointmentForPatient = postAppointmentForPatient;
 exports.deleteAvailability = deleteAvailability;
 exports.cancelAppointmentByAttendantController = cancelAppointmentByAttendantController;
+exports.getUserAppointments = getUserAppointments;
+exports.checkPatientDoctorAvailability = checkPatientDoctorAvailability;
+exports.fixAppointmentTimezonesController = fixAppointmentTimezonesController;
 const appointmentService_service_1 = require("../service/appointmentService.service");
 const moment_timezone_1 = __importDefault(require("moment-timezone"));
 const prisma_1 = require("../lib/prisma");
@@ -40,6 +44,34 @@ async function postAppointment(request, reply) {
         status: "success",
         data: appointment
     });
+}
+// Buscar horários disponíveis por período (compatibilidade com frontend)
+async function getAvailableSlotsByPeriod(request, reply) {
+    try {
+        const { startDate, endDate, doctorId } = request.query;
+        // Se não forneceu doctorId, retornar erro
+        if (!doctorId) {
+            return reply.status(400).send({
+                status: "error",
+                message: "doctorId é obrigatório"
+            });
+        }
+        // Converter startDate para formato de data (YYYY-MM-DD)
+        const date = (0, moment_timezone_1.default)(startDate).format("YYYY-MM-DD");
+        // Usar a função existente para gerar slots
+        const slots = await (0, appointmentService_service_1.generateAvailableSlots)(doctorId, date);
+        return reply.status(200).send({
+            status: "success",
+            data: slots
+        });
+    }
+    catch (error) {
+        console.error("Erro ao buscar horários disponíveis:", error);
+        return reply.status(500).send({
+            status: "error",
+            message: "Erro interno do servidor"
+        });
+    }
 }
 // Buscar horários disponíveis
 async function getAvailableSlots(request, reply) {
@@ -143,7 +175,7 @@ async function postAppointmentForPatient(request, reply) {
     const { id: currentUserId, register } = request
         .usuario;
     // Verificar se é médico
-    if (register !== "doctor") {
+    if (register !== "doctor" && register !== "attendant") {
         return reply.status(403).send({
             status: "error",
             message: "Apenas médicos podem criar agendamentos para pacientes"
@@ -181,13 +213,28 @@ async function postAppointmentForPatient(request, reply) {
     // Calcular endTime (50 minutos de sessão)
     const startDate = new Date(startTime);
     const endDate = new Date(startDate.getTime() + 50 * 60 * 1000); // +50 minutos
-    const appointment = await (0, appointmentService_service_1.createAppointment)({
-        patientId,
-        doctorId,
-        startTime,
-        endTime: endDate.toISOString(),
-        notes
-    });
+    // Usar função diferente baseado no tipo de usuário
+    let appointment;
+    if (register === "attendant") {
+        // Para atendente, usar função que não adiciona 3 horas
+        appointment = await (0, appointmentService_service_1.createAppointmentForAttendant)({
+            patientId,
+            doctorId,
+            startTime,
+            endTime: endDate.toISOString(),
+            notes
+        });
+    }
+    else {
+        // Para médico, usar função normal que adiciona 3 horas
+        appointment = await (0, appointmentService_service_1.createAppointment)({
+            patientId,
+            doctorId,
+            startTime,
+            endTime: endDate.toISOString(),
+            notes
+        });
+    }
     return reply.status(201).send({
         status: "success",
         data: appointment
@@ -265,6 +312,70 @@ async function cancelAppointmentByAttendantController(request, reply) {
         return reply.status(500).send({
             status: "error",
             message: "Erro interno do servidor"
+        });
+    }
+}
+// Buscar agendamentos de um usuário específico (para atendente)
+async function getUserAppointments(request, reply) {
+    try {
+        // Verificar se o usuário logado é atendente
+        const { id: attendantId, register } = request
+            .usuario;
+        if (register !== "attendant") {
+            return reply.status(403).send({
+                status: "error",
+                message: "Apenas atendentes podem acessar esta rota"
+            });
+        }
+        const { userId } = request.params;
+        const { status } = request.query;
+        // Buscar agendamentos do usuário
+        const appointments = await (0, appointmentService_service_1.getPatientAppointments)(userId, status);
+        return reply.status(200).send({
+            status: "success",
+            data: appointments
+        });
+    }
+    catch (error) {
+        console.error("Erro ao buscar agendamentos do usuário:", error);
+        return reply.status(500).send({
+            status: "error",
+            message: "Erro interno do servidor"
+        });
+    }
+}
+// Verificar se o paciente pode agendar com um profissional específico
+async function checkPatientDoctorAvailability(request, reply) {
+    try {
+        const { patientId, doctorId } = request.params;
+        const availability = await (0, appointmentService_service_1.canPatientScheduleWithDoctor)(patientId, doctorId);
+        return reply.status(200).send({
+            status: "success",
+            data: availability
+        });
+    }
+    catch (error) {
+        console.error("Erro ao verificar disponibilidade:", error);
+        return reply.status(500).send({
+            status: "error",
+            message: "Erro interno do servidor"
+        });
+    }
+}
+// Corrigir timezones dos agendamentos (usar apenas uma vez)
+async function fixAppointmentTimezonesController(request, reply) {
+    try {
+        await (0, appointmentService_service_1.fixAppointmentTimezones)();
+        return reply.status(200).send({
+            status: "success",
+            message: "Timezones dos agendamentos corrigidos com sucesso"
+        });
+    }
+    catch (error) {
+        console.error("Erro ao corrigir timezones:", error);
+        return reply.status(500).send({
+            status: "error",
+            message: error.message || "Erro interno do servidor"
         });
     }
 }

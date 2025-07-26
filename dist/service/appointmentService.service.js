@@ -3,9 +3,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getAppointmentById = exports.createAppointment = exports.checkWeeklyAppointmentLimit = exports.selectAppointmentWithUsers = exports.selectAppointment = void 0;
+exports.getAppointmentById = exports.canPatientScheduleWithDoctor = exports.createAppointmentForAttendant = exports.createAppointment = exports.selectAppointmentWithUsers = exports.selectAppointment = void 0;
 exports.checkSlotAvailability = checkSlotAvailability;
 exports.generateAvailableSlots = generateAvailableSlots;
+exports.fixAppointmentTimezones = fixAppointmentTimezones;
+exports.checkSlotAvailabilityForAttendant = checkSlotAvailabilityForAttendant;
 exports.getPatientAppointments = getPatientAppointments;
 exports.getDoctorAppointments = getDoctorAppointments;
 exports.updateAppointmentStatus = updateAppointmentStatus;
@@ -55,29 +57,52 @@ exports.selectAppointmentWithUsers = {
         }
     }
 };
-// Verificar se o paciente já tem agendamento na semana
-const checkWeeklyAppointmentLimit = async (patientId, date) => {
-    const startOfWeek = (0, moment_timezone_1.default)(date).tz(TIMEZONE).startOf("week").toDate();
-    const endOfWeek = (0, moment_timezone_1.default)(date).tz(TIMEZONE).endOf("week").toDate();
-    const existingAppointment = await prisma_1.prisma.appointment.findFirst({
-        where: {
-            patientId: patientId,
-            startTime: {
-                gte: startOfWeek,
-                lte: endOfWeek
-            },
-            status: {
-                notIn: ["cancelled", "no_show"]
-            }
-        }
-    });
-    if (existingAppointment) {
-        throw new Error("Paciente já possui consulta agendada nesta semana");
-    }
-};
-exports.checkWeeklyAppointmentLimit = checkWeeklyAppointmentLimit;
 // Verificar se o horário está disponível
 async function checkSlotAvailability(doctorId, startTime, endTime) {
+    // Converter para horário local (adicionar 3 horas)
+    const localStartTime = (0, moment_timezone_1.default)(startTime).add(3, "hours").toDate();
+    const localEndTime = (0, moment_timezone_1.default)(endTime).add(3, "hours").toDate();
+    console.log(`🔍 VERIFICANDO DISPONIBILIDADE: ${(0, moment_timezone_1.default)(localStartTime)
+        .tz(TIMEZONE)
+        .format("DD/MM/YYYY HH:mm")} - ${(0, moment_timezone_1.default)(localEndTime)
+        .tz(TIMEZONE)
+        .format("HH:mm")}`);
+    // Verificar se o horário está dentro da disponibilidade do médico
+    const appointmentDate = (0, moment_timezone_1.default)(localStartTime).tz(TIMEZONE);
+    const dayOfWeek = appointmentDate.day();
+    const availability = await prisma_1.prisma.availability.findFirst({
+        where: {
+            doctorId,
+            dayOfWeek,
+            isActive: true
+        }
+    });
+    if (!availability) {
+        throw new bad_request_1.BadRequest("Médico não possui disponibilidade para este dia da semana");
+    }
+    const [availStartHour, availStartMin] = availability.startTime
+        .split(":")
+        .map(Number);
+    const [availEndHour, availEndMin] = availability.endTime
+        .split(":")
+        .map(Number);
+    const availabilityStart = appointmentDate
+        .clone()
+        .hour(availStartHour)
+        .minute(availStartMin);
+    const availabilityEnd = appointmentDate
+        .clone()
+        .hour(availEndHour)
+        .minute(availEndMin);
+    const appointmentStart = (0, moment_timezone_1.default)(localStartTime).tz(TIMEZONE);
+    const appointmentEnd = (0, moment_timezone_1.default)(localEndTime).tz(TIMEZONE);
+    console.log(`📅 Disponibilidade do médico: ${availabilityStart.format("HH:mm")} - ${availabilityEnd.format("HH:mm")}`);
+    console.log(`📅 Horário solicitado: ${appointmentStart.format("HH:mm")} - ${appointmentEnd.format("HH:mm")}`);
+    // Verificar se o agendamento está dentro da disponibilidade
+    if (appointmentStart.isBefore(availabilityStart) ||
+        appointmentEnd.isAfter(availabilityEnd)) {
+        throw new bad_request_1.BadRequest(`Horário fora da disponibilidade do médico (${availabilityStart.format("HH:mm")} - ${availabilityEnd.format("HH:mm")})`);
+    }
     const conflictingAppointment = await prisma_1.prisma.appointment.findFirst({
         where: {
             doctorId,
@@ -87,25 +112,49 @@ async function checkSlotAvailability(doctorId, startTime, endTime) {
             OR: [
                 {
                     AND: [
-                        { startTime: { lte: startTime } },
-                        { endTime: { gt: startTime } }
+                        { startTime: { lte: localStartTime } },
+                        { endTime: { gt: localStartTime } }
                     ]
-                },
-                {
-                    AND: [{ startTime: { lt: endTime } }, { endTime: { gte: endTime } }]
                 },
                 {
                     AND: [
-                        { startTime: { gte: startTime } },
-                        { endTime: { lte: endTime } }
+                        { startTime: { lt: localEndTime } },
+                        { endTime: { gte: localEndTime } }
+                    ]
+                },
+                {
+                    AND: [
+                        { startTime: { gte: localStartTime } },
+                        { endTime: { lte: localEndTime } }
                     ]
                 }
             ]
+        },
+        include: {
+            patient: {
+                select: {
+                    id: true,
+                    name: true
+                }
+            }
         }
     });
     if (conflictingAppointment) {
+        console.log(`❌ CONFLITO ENCONTRADO: Agendamento ID ${conflictingAppointment.id}`);
+        console.log(`   Horário conflitante: ${(0, moment_timezone_1.default)(conflictingAppointment.startTime)
+            .tz(TIMEZONE)
+            .format("DD/MM/YYYY HH:mm")} - ${(0, moment_timezone_1.default)(conflictingAppointment.endTime)
+            .tz(TIMEZONE)
+            .format("HH:mm")}`);
+        console.log(`   Paciente: ${conflictingAppointment.patient.name} (ID: ${conflictingAppointment.patient.id})`);
+        console.log(`   Status: ${conflictingAppointment.status}`);
         throw new bad_request_1.BadRequest("Este horário já está ocupado");
     }
+    console.log(`✅ HORÁRIO DISPONÍVEL: ${(0, moment_timezone_1.default)(localStartTime)
+        .tz(TIMEZONE)
+        .format("DD/MM/YYYY HH:mm")} - ${(0, moment_timezone_1.default)(localEndTime)
+        .tz(TIMEZONE)
+        .format("HH:mm")}`);
 }
 // Função para debug dos horários
 function debugSlotGeneration(requestedDate, availability, now, isToday, currentSlot) {
@@ -120,8 +169,12 @@ function debugSlotGeneration(requestedDate, availability, now, isToday, currentS
 }
 // Gerar slots disponíveis para um dia
 async function generateAvailableSlots(doctorId, date) {
+    console.log(`\n=== INICIANDO GERAÇÃO DE SLOTS ===`);
+    console.log(`Data solicitada: ${date}`);
+    console.log(`Médico ID: ${doctorId}`);
     const requestedDate = (0, moment_timezone_1.default)(date).tz(TIMEZONE);
     const dayOfWeek = requestedDate.day();
+    console.log(`Dia da semana: ${dayOfWeek} (${requestedDate.format("dddd")})`);
     // Buscar disponibilidade do médico para o dia da semana
     const availability = await prisma_1.prisma.availability.findFirst({
         where: {
@@ -130,12 +183,24 @@ async function generateAvailableSlots(doctorId, date) {
             isActive: true
         }
     });
+    console.log(`Disponibilidade encontrada:`, availability ? "SIM" : "NÃO");
+    if (availability) {
+        console.log(`   Horário: ${availability.startTime} - ${availability.endTime}`);
+        console.log(`   ID: ${availability.id}`);
+    }
     if (!availability) {
+        console.log(`❌ NENHUMA DISPONIBILIDADE CONFIGURADA PARA ESTE DIA`);
+        console.log(`=== FIM GERAÇÃO DE SLOTS ===\n`);
         return [];
     }
     // Buscar agendamentos existentes no dia
     const startOfDay = requestedDate.clone().startOf("day").toDate();
     const endOfDay = requestedDate.clone().endOf("day").toDate();
+    console.log(`🔍 Buscando agendamentos entre: ${(0, moment_timezone_1.default)(startOfDay)
+        .tz(TIMEZONE)
+        .format("DD/MM/YYYY HH:mm")} e ${(0, moment_timezone_1.default)(endOfDay)
+        .tz(TIMEZONE)
+        .format("DD/MM/YYYY HH:mm")}`);
     const existingAppointments = await prisma_1.prisma.appointment.findMany({
         where: {
             doctorId,
@@ -151,6 +216,18 @@ async function generateAvailableSlots(doctorId, date) {
             startTime: "asc"
         }
     });
+    // Debug: Log dos agendamentos existentes
+    console.log(`=== AGENDAMENTOS EXISTENTES PARA ${date} ===`);
+    console.log(`Médico ID: ${doctorId}`);
+    console.log(`Total de agendamentos: ${existingAppointments.length}`);
+    existingAppointments.forEach((appointment, index) => {
+        console.log(`${index + 1}. ${(0, moment_timezone_1.default)(appointment.startTime)
+            .tz(TIMEZONE)
+            .format("HH:mm")} - ${(0, moment_timezone_1.default)(appointment.endTime)
+            .tz(TIMEZONE)
+            .format("HH:mm")} (${appointment.status})`);
+    });
+    console.log("==========================================");
     // Gerar slots baseados na disponibilidade
     const slots = [];
     const [availStartHour, availStartMin] = availability.startTime
@@ -159,6 +236,15 @@ async function generateAvailableSlots(doctorId, date) {
     const [availEndHour, availEndMin] = availability.endTime
         .split(":")
         .map(Number);
+    console.log(`\n📅 CONFIGURAÇÃO DE HORÁRIOS:`);
+    console.log(`   Início disponibilidade: ${availStartHour}:${availStartMin
+        .toString()
+        .padStart(2, "0")}`);
+    console.log(`   Fim disponibilidade: ${availEndHour}:${availEndMin
+        .toString()
+        .padStart(2, "0")}`);
+    console.log(`   Duração da sessão: ${SESSION_DURATION_MINUTES} minutos`);
+    console.log(`   Intervalo entre sessões: ${BREAK_DURATION_MINUTES} minutos`);
     // Determinar o horário de início
     const startHour = availStartHour;
     const startMin = availStartMin;
@@ -171,6 +257,10 @@ async function generateAvailableSlots(doctorId, date) {
     // Se for hoje e o horário de início já passou, começar pelo próximo slot disponível
     const now = (0, moment_timezone_1.default)().tz(TIMEZONE);
     const isToday = requestedDate.isSame(now, "day");
+    console.log(`\n⏰ VERIFICAÇÃO DE HORÁRIO:`);
+    console.log(`   É hoje? ${isToday}`);
+    console.log(`   Horário atual: ${now.format("HH:mm")}`);
+    console.log(`   Primeiro slot calculado: ${currentSlot.format("HH:mm")}`);
     if (isToday && currentSlot.isBefore(now)) {
         // Começar pelo próximo horário redondo disponível
         const currentHour = now.hour();
@@ -187,6 +277,7 @@ async function generateAvailableSlots(doctorId, date) {
             (currentSlot.hour() === startHour && currentSlot.minute() < startMin)) {
             currentSlot = requestedDate.clone().hour(startHour).minute(startMin);
         }
+        console.log(`   ⚠️  Horário ajustado para: ${currentSlot.format("HH:mm")}`);
     }
     // Debug dos horários (descomentar apenas para debug)
     // debugSlotGeneration(requestedDate, availability, now, isToday, currentSlot);
@@ -198,21 +289,45 @@ async function generateAvailableSlots(doctorId, date) {
     const endTime = availEndTime.isBefore(serviceEndTime)
         ? availEndTime
         : serviceEndTime;
+    console.log(`\n🔄 INICIANDO LOOP DE GERAÇÃO DE SLOTS:`);
+    console.log(`   Horário de fim da disponibilidade: ${availEndTime.format("HH:mm")}`);
+    console.log(`   Horário de fim do serviço: ${serviceEndTime.format("HH:mm")}`);
+    console.log(`   Horário de fim usado: ${endTime.format("HH:mm")}`);
+    console.log(`   Slot inicial: ${currentSlot.format("HH:mm")}`);
+    let slotCount = 0;
     while (currentSlot.isBefore(endTime)) {
+        slotCount++;
         const slotEnd = currentSlot
             .clone()
             .add(SESSION_DURATION_MINUTES, "minutes");
+        console.log(`\n   📍 Slot ${slotCount}: ${currentSlot.format("HH:mm")} - ${slotEnd.format("HH:mm")}`);
         // Verificar se o slot não conflita com agendamentos existentes
-        const isAvailable = !existingAppointments.some((appointment) => {
+        const conflictingAppointment = existingAppointments.find((appointment) => {
             const appointmentStart = (0, moment_timezone_1.default)(appointment.startTime).tz(TIMEZONE);
             const appointmentEnd = (0, moment_timezone_1.default)(appointment.endTime).tz(TIMEZONE);
-            return (currentSlot.isBefore(appointmentEnd) &&
-                slotEnd.isAfter(appointmentStart));
+            // Verificar se há sobreposição de horários
+            // O slot está disponível se:
+            // 1. O slot termina antes do início do agendamento, OU
+            // 2. O slot começa depois do fim do agendamento
+            const slotEndsBeforeAppointment = slotEnd.isSameOrBefore(appointmentStart);
+            const slotStartsAfterAppointment = currentSlot.isSameOrAfter(appointmentEnd);
+            // Se NÃO há sobreposição, o slot está disponível
+            return !(slotEndsBeforeAppointment || slotStartsAfterAppointment);
         });
+        const isAvailable = !conflictingAppointment;
+        // Debug: Log de slots conflitantes
+        if (!isAvailable && conflictingAppointment) {
+            console.log(`     ❌ CONFLITO: Conflita com agendamento ${conflictingAppointment.id}`);
+            console.log(`        Agendamento: ${(0, moment_timezone_1.default)(conflictingAppointment.startTime).format("HH:mm")} - ${(0, moment_timezone_1.default)(conflictingAppointment.endTime).format("HH:mm")}`);
+        }
         // Verificar se o slot não está no passado
         // Se for hoje, verificar se o horário já passou
         // Se for dia futuro, todos os horários são válidos
         const isPastSlot = isToday && currentSlot.isBefore(now);
+        if (isPastSlot) {
+            console.log(`     ⏰ PASSADO: Slot já passou`);
+        }
+        console.log(`     Status: ${isAvailable && !isPastSlot ? "✅ DISPONÍVEL" : "❌ INDISPONÍVEL"}`);
         if (isAvailable && !isPastSlot && slotEnd.isSameOrBefore(endTime)) {
             // Criar horário UTC com o valor do horário brasileiro
             // Exemplo: 08:00 BRT vira 08:00 UTC (não 11:00 UTC)
@@ -239,13 +354,52 @@ async function generateAvailableSlots(doctorId, date) {
                 endTime: endTimeUTC.toISOString(),
                 available: true
             });
+            // Debug: Log de slots disponíveis
+            console.log(`✅ SLOT DISPONÍVEL: ${currentSlot.format("HH:mm")} - ${slotEnd.format("HH:mm")}`);
         }
         // Próximo slot (sessão + intervalo)
         currentSlot.add(SESSION_DURATION_MINUTES + BREAK_DURATION_MINUTES, "minutes");
     }
     // Os slots são retornados em formato UTC mas com horário brasileiro
     // Exemplo: 08:00 BRT = 08:00 UTC (2025-07-03T08:00:00.000Z)
+    // Debug: Resumo final
+    console.log(`\n📊 RESUMO FINAL:`);
+    console.log(`   Total de slots verificados: ${slotCount}`);
+    console.log(`   Slots disponíveis gerados: ${slots.length}`);
+    console.log(`   Slots disponíveis:`, slots.map((slot) => (0, moment_timezone_1.default)(slot.startTime).format("HH:mm")).join(", "));
+    console.log(`=== FIM GERAÇÃO DE SLOTS ===\n`);
     return slots;
+}
+// Função para corrigir agendamentos com timezone incorreto (usar apenas uma vez)
+async function fixAppointmentTimezones() {
+    console.log("🔧 Iniciando correção de timezones dos agendamentos...");
+    const appointments = await prisma_1.prisma.appointment.findMany({
+        where: {
+            status: {
+                notIn: ["cancelled", "no_show"]
+            }
+        }
+    });
+    console.log(`📋 Encontrados ${appointments.length} agendamentos para verificar`);
+    for (const appointment of appointments) {
+        const originalStart = (0, moment_timezone_1.default)(appointment.startTime);
+        const originalEnd = (0, moment_timezone_1.default)(appointment.endTime);
+        // Se o horário está em UTC (3 horas a menos), corrigir para BRT
+        const correctedStart = (0, moment_timezone_1.default)(appointment.startTime).tz(TIMEZONE);
+        const correctedEnd = (0, moment_timezone_1.default)(appointment.endTime).tz(TIMEZONE);
+        console.log(`🔄 Agendamento ${appointment.id}:`);
+        console.log(`   Original: ${originalStart.format("DD/MM/YYYY HH:mm")} - ${originalEnd.format("HH:mm")}`);
+        console.log(`   Corrigido: ${correctedStart.format("DD/MM/YYYY HH:mm")} - ${correctedEnd.format("HH:mm")}`);
+        // Atualizar no banco
+        await prisma_1.prisma.appointment.update({
+            where: { id: appointment.id },
+            data: {
+                startTime: correctedStart.toDate(),
+                endTime: correctedEnd.toDate()
+            }
+        });
+    }
+    console.log("✅ Correção de timezones concluída!");
 }
 // Criar agendamento
 const createAppointment = async (appointmentData) => {
@@ -267,8 +421,6 @@ const createAppointment = async (appointmentData) => {
     if (!doctor) {
         throw new Error("Médico não encontrado");
     }
-    // Verificar limite semanal
-    await (0, exports.checkWeeklyAppointmentLimit)(patientIdString, new Date(startTime));
     // Verificar conflito de horário
     await checkSlotAvailability(doctorIdString, new Date(startTime), new Date(endTime));
     // Criar o agendamento
@@ -276,8 +428,8 @@ const createAppointment = async (appointmentData) => {
         data: {
             patientId: patientIdString,
             doctorId: doctorIdString,
-            startTime: new Date(startTime),
-            endTime: new Date(endTime),
+            startTime: (0, moment_timezone_1.default)(startTime).add(3, "hours").toDate(),
+            endTime: (0, moment_timezone_1.default)(endTime).add(3, "hours").toDate(),
             notes: notes || "",
             status: "scheduled"
         },
@@ -311,6 +463,192 @@ const createAppointment = async (appointmentData) => {
     return appointment;
 };
 exports.createAppointment = createAppointment;
+// Criar agendamento para atendente (sem adicionar 3 horas)
+const createAppointmentForAttendant = async (appointmentData) => {
+    const { patientId, doctorId, startTime, endTime, notes } = appointmentData;
+    // Verificar se é string (corrigir se vier objeto)
+    const patientIdString = typeof patientId === "string" ? patientId : patientId.id;
+    const doctorIdString = typeof doctorId === "string" ? doctorId : doctorId.id;
+    // Validar se patient existe
+    const patient = await prisma_1.prisma.users.findUnique({
+        where: { id: patientIdString }
+    });
+    if (!patient) {
+        throw new Error("Paciente não encontrado");
+    }
+    // Validar se doctor existe
+    const doctor = await prisma_1.prisma.users.findUnique({
+        where: { id: doctorIdString, register: "doctor" }
+    });
+    if (!doctor) {
+        throw new Error("Médico não encontrado");
+    }
+    // Verificar conflito de horário (sem adicionar 3 horas)
+    await checkSlotAvailabilityForAttendant(doctorIdString, new Date(startTime), new Date(endTime));
+    // Criar o agendamento (sem adicionar 3 horas)
+    const appointment = await prisma_1.prisma.appointment.create({
+        data: {
+            patientId: patientIdString,
+            doctorId: doctorIdString,
+            startTime: (0, moment_timezone_1.default)(startTime).add(3, "hours").toDate(),
+            endTime: (0, moment_timezone_1.default)(endTime).add(3, "hours").toDate(),
+            notes: notes || "",
+            status: "scheduled"
+        },
+        include: {
+            patient: {
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    phone: true
+                }
+            },
+            doctor: {
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    phone: true
+                }
+            }
+        }
+    });
+    // Enviar notificação de confirmação (sistema próprio)
+    try {
+        await (0, notificationService_service_1.sendAppointmentConfirmation)(appointment);
+    }
+    catch (error) {
+        console.error("Erro ao enviar notificação de confirmação:", error);
+    }
+    return appointment;
+};
+exports.createAppointmentForAttendant = createAppointmentForAttendant;
+// Verificar disponibilidade para atendente (sem adicionar 3 horas)
+async function checkSlotAvailabilityForAttendant(doctorId, startTime, endTime) {
+    // O frontend envia horário local como se fosse UTC, então precisamos adicionar 3 horas
+    const localStartTime = (0, moment_timezone_1.default)(startTime).add(3, "hours");
+    const localEndTime = (0, moment_timezone_1.default)(endTime).add(3, "hours");
+    console.log(`🔍 VERIFICANDO DISPONIBILIDADE (ATTENDANT): ${localStartTime
+        .tz(TIMEZONE)
+        .format("DD/MM/YYYY HH:mm")} - ${localEndTime
+        .tz(TIMEZONE)
+        .format("HH:mm")}`);
+    // Verificar se o horário está dentro da disponibilidade do médico
+    const appointmentDate = localStartTime.tz(TIMEZONE);
+    const dayOfWeek = appointmentDate.day();
+    const availability = await prisma_1.prisma.availability.findFirst({
+        where: {
+            doctorId,
+            dayOfWeek,
+            isActive: true
+        }
+    });
+    if (!availability) {
+        throw new bad_request_1.BadRequest("Médico não possui disponibilidade para este dia da semana");
+    }
+    const [availStartHour, availStartMin] = availability.startTime
+        .split(":")
+        .map(Number);
+    const [availEndHour, availEndMin] = availability.endTime
+        .split(":")
+        .map(Number);
+    const availabilityStart = appointmentDate
+        .clone()
+        .hour(availStartHour)
+        .minute(availStartMin);
+    const availabilityEnd = appointmentDate
+        .clone()
+        .hour(availEndHour)
+        .minute(availEndMin);
+    const appointmentStart = localStartTime.tz(TIMEZONE);
+    const appointmentEnd = localEndTime.tz(TIMEZONE);
+    console.log(`📅 Disponibilidade do médico: ${availabilityStart.format("HH:mm")} - ${availabilityEnd.format("HH:mm")}`);
+    console.log(`📅 Horário solicitado: ${appointmentStart.format("HH:mm")} - ${appointmentEnd.format("HH:mm")}`);
+    // Verificar se o agendamento está dentro da disponibilidade
+    if (appointmentStart.isBefore(availabilityStart) ||
+        appointmentEnd.isAfter(availabilityEnd)) {
+        throw new bad_request_1.BadRequest(`Horário fora da disponibilidade do médico (${availabilityStart.format("HH:mm")} - ${availabilityEnd.format("HH:mm")})`);
+    }
+    const conflictingAppointment = await prisma_1.prisma.appointment.findFirst({
+        where: {
+            doctorId,
+            status: {
+                notIn: ["cancelled", "no_show"]
+            },
+            OR: [
+                {
+                    AND: [
+                        { startTime: { lte: startTime } },
+                        { endTime: { gt: startTime } }
+                    ]
+                },
+                {
+                    AND: [{ startTime: { lt: endTime } }, { endTime: { gte: endTime } }]
+                },
+                {
+                    AND: [
+                        { startTime: { gte: startTime } },
+                        { endTime: { lte: endTime } }
+                    ]
+                }
+            ]
+        },
+        include: {
+            patient: {
+                select: {
+                    id: true,
+                    name: true
+                }
+            }
+        }
+    });
+    if (conflictingAppointment) {
+        console.log(`❌ CONFLITO ENCONTRADO: Agendamento ID ${conflictingAppointment.id}`);
+        console.log(`   Horário conflitante: ${(0, moment_timezone_1.default)(conflictingAppointment.startTime)
+            .tz(TIMEZONE)
+            .format("DD/MM/YYYY HH:mm")} - ${(0, moment_timezone_1.default)(conflictingAppointment.endTime)
+            .tz(TIMEZONE)
+            .format("HH:mm")}`);
+        console.log(`   Paciente: ${conflictingAppointment.patient.name} (ID: ${conflictingAppointment.patient.id})`);
+        console.log(`   Status: ${conflictingAppointment.status}`);
+        throw new bad_request_1.BadRequest("Este horário já está ocupado");
+    }
+    console.log(`✅ HORÁRIO DISPONÍVEL: ${localStartTime
+        .tz(TIMEZONE)
+        .format("DD/MM/YYYY HH:mm")} - ${localEndTime
+        .tz(TIMEZONE)
+        .format("HH:mm")}`);
+}
+// Verificar se o paciente pode agendar com um profissional específico
+const canPatientScheduleWithDoctor = async (patientId, doctorId) => {
+    try {
+        // ✅ SEMPRE PERMITE AGENDAMENTO - Restrição removida
+        return {
+            canSchedule: true
+        };
+    }
+    catch (error) {
+        console.error("Erro ao verificar disponibilidade do paciente:", error);
+        return {
+            canSchedule: false,
+            reason: "Erro ao verificar disponibilidade"
+        };
+    }
+};
+exports.canPatientScheduleWithDoctor = canPatientScheduleWithDoctor;
+// Função para ajustar horários dos agendamentos (subtrair 3 horas)
+function adjustAppointmentTimes(appointments) {
+    return appointments.map((appointment) => ({
+        ...appointment,
+        startTime: appointment.startTime
+            ? (0, moment_timezone_1.default)(appointment.startTime).subtract(3, "hours").toISOString()
+            : appointment.startTime,
+        endTime: appointment.endTime
+            ? (0, moment_timezone_1.default)(appointment.endTime).subtract(3, "hours").toISOString()
+            : appointment.endTime
+    }));
+}
 // Buscar agendamentos do paciente
 async function getPatientAppointments(patientId, status) {
     const where = { patientId };
@@ -324,7 +662,8 @@ async function getPatientAppointments(patientId, status) {
             startTime: "desc"
         }
     });
-    return appointments;
+    // Ajustar horários antes de retornar
+    return adjustAppointmentTimes(appointments);
 }
 // Buscar agendamentos do médico
 async function getDoctorAppointments(doctorId, startDate, endDate) {
@@ -342,7 +681,8 @@ async function getDoctorAppointments(doctorId, startDate, endDate) {
             startTime: "asc"
         }
     });
-    return appointments;
+    // Ajustar horários antes de retornar
+    return adjustAppointmentTimes(appointments);
 }
 // Atualizar status do agendamento
 async function updateAppointmentStatus(appointmentId, status, userId, userRole) {
@@ -451,7 +791,19 @@ const getAppointmentById = async (appointmentId) => {
                 }
             }
         });
-        return appointment;
+        if (!appointment) {
+            return null;
+        }
+        // Ajustar horários antes de retornar
+        return {
+            ...appointment,
+            startTime: appointment.startTime
+                ? (0, moment_timezone_1.default)(appointment.startTime).subtract(3, "hours").toISOString()
+                : appointment.startTime,
+            endTime: appointment.endTime
+                ? (0, moment_timezone_1.default)(appointment.endTime).subtract(3, "hours").toISOString()
+                : appointment.endTime
+        };
     }
     catch (error) {
         console.error("Error fetching appointment by ID:", error);
@@ -521,7 +873,9 @@ async function cancelAppointmentByAttendant(appointmentId, attendantId) {
         throw new not_found_1.NotFound("Agendamento não encontrado");
     }
     // Verificar se o agendamento pode ser cancelado
-    if (appointment.status === "completed" || appointment.status === "no_show" || appointment.status === "cancelled") {
+    if (appointment.status === "completed" ||
+        appointment.status === "no_show" ||
+        appointment.status === "cancelled") {
         throw new bad_request_1.BadRequest("Não é possível cancelar um agendamento finalizado ou já cancelado");
     }
     // Verificar se o agendamento é futuro

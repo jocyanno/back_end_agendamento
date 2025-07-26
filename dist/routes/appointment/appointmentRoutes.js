@@ -16,7 +16,13 @@ async function appointmentRoutes(app) {
         .get("/appointments/available-slots", appointment_1.appointmentDocs.getAvailableSlots, appointmentController_1.getAvailableSlots);
     app
         .withTypeProvider()
+        .get("/appointments", appointment_1.appointmentDocs.getAvailableSlotsByPeriod, appointmentController_1.getAvailableSlotsByPeriod);
+    app
+        .withTypeProvider()
         .get("/appointments/my", appointment_1.appointmentDocs.getMyAppointments, appointmentController_1.getMyAppointments);
+    app
+        .withTypeProvider()
+        .get("/appointments/user/:userId", appointment_1.appointmentDocs.getUserAppointments, appointmentController_1.getUserAppointments);
     app
         .withTypeProvider()
         .get("/appointments/today", appointment_1.appointmentDocs.getTodayAppointments, appointmentController_1.getTodayAppointments);
@@ -26,6 +32,12 @@ async function appointmentRoutes(app) {
     app
         .withTypeProvider()
         .put("/appointments/:appointmentId/cancel", appointment_1.appointmentDocs.cancelAppointmentByAttendant, appointmentController_1.cancelAppointmentByAttendantController);
+    app
+        .withTypeProvider()
+        .get("/appointments/check-availability/:patientId/:doctorId", appointment_1.appointmentDocs.checkPatientDoctorAvailability, appointmentController_1.checkPatientDoctorAvailability);
+    app
+        .withTypeProvider()
+        .post("/appointments/fix-timezones", appointment_1.appointmentDocs.fixAppointmentTimezones, appointmentController_1.fixAppointmentTimezonesController);
     // Rotas de disponibilidade
     app
         .withTypeProvider()
