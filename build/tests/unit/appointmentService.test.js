@@ -18711,11 +18711,11 @@ async function sendAppointmentConfirmation(appointment) {
     appointmentId: appointment.id,
     type: "confirmation",
     title: "Agendamento Confirmado",
-    message: `Seu agendamento com ${appointment.doctor.name} foi confirmado para ${date} \xE0s ${time}`
+    message: `Seu agendamento com ${appointment.professional.name} foi confirmado para ${date} \xE0s ${time}`
   });
   const emailHtml = getAppointmentConfirmationTemplate({
     patientName: appointment.patient.name || "Paciente",
-    doctorName: appointment.doctor.name || "Profissional",
+    professionalName: appointment.professional.name || "Profissional",
     date,
     time
   });
@@ -18728,11 +18728,11 @@ async function sendAppointmentCancellation(appointment, reason) {
     appointmentId: appointment.id,
     type: "cancellation",
     title: "Agendamento Cancelado",
-    message: `Seu agendamento com ${appointment.doctor.name} para ${date} \xE0s ${time} foi cancelado`
+    message: `Seu agendamento com ${appointment.professional.name} para ${date} \xE0s ${time} foi cancelado`
   });
   const emailHtml = getAppointmentCancellationTemplate({
     patientName: appointment.patient.name || "Paciente",
-    doctorName: appointment.doctor.name || "Profissional",
+    professionalName: appointment.professional.name || "Profissional",
     date,
     time,
     reason
@@ -18747,7 +18747,8 @@ var END_HOUR = 20;
 var selectAppointment = {
   id: true,
   patientId: true,
-  doctorId: true,
+  professionalId: true,
+  organizationId: true,
   startTime: true,
   endTime: true,
   status: true,
@@ -18765,16 +18766,22 @@ var selectAppointmentWithUsers = {
       phone: true
     }
   },
-  doctor: {
+  professional: {
     select: {
       id: true,
       name: true,
       email: true,
       phone: true
     }
+  },
+  organization: {
+    select: {
+      id: true,
+      name: true
+    }
   }
 };
-async function checkSlotAvailability(doctorId, startTime, endTime) {
+async function checkSlotAvailability(professionalId, organizationId, startTime, endTime) {
   const localStartTime = (0, import_moment_timezone2.default)(startTime).add(3, "hours").toDate();
   const localEndTime = (0, import_moment_timezone2.default)(endTime).add(3, "hours").toDate();
   console.log(
@@ -18784,7 +18791,8 @@ async function checkSlotAvailability(doctorId, startTime, endTime) {
   const dayOfWeek = appointmentDate.day();
   const availability = await prisma.availability.findFirst({
     where: {
-      doctorId,
+      professionalId,
+      organizationId,
       dayOfWeek,
       isActive: true
     }
@@ -18798,89 +18806,44 @@ async function checkSlotAvailability(doctorId, startTime, endTime) {
   const [availEndHour, availEndMin] = availability.endTime.split(":").map(Number);
   const availabilityStart = appointmentDate.clone().hour(availStartHour).minute(availStartMin);
   const availabilityEnd = appointmentDate.clone().hour(availEndHour).minute(availEndMin);
-  const appointmentStart = (0, import_moment_timezone2.default)(localStartTime).tz(TIMEZONE2);
-  const appointmentEnd = (0, import_moment_timezone2.default)(localEndTime).tz(TIMEZONE2);
-  console.log(
-    `\u{1F4C5} Disponibilidade do m\xE9dico: ${availabilityStart.format(
-      "HH:mm"
-    )} - ${availabilityEnd.format("HH:mm")}`
-  );
-  console.log(
-    `\u{1F4C5} Hor\xE1rio solicitado: ${appointmentStart.format(
-      "HH:mm"
-    )} - ${appointmentEnd.format("HH:mm")}`
-  );
-  if (appointmentStart.isBefore(availabilityStart) || appointmentEnd.isAfter(availabilityEnd)) {
+  const requestedStart = (0, import_moment_timezone2.default)(localStartTime).tz(TIMEZONE2);
+  const requestedEnd = (0, import_moment_timezone2.default)(localEndTime).tz(TIMEZONE2);
+  if (requestedStart.isBefore(availabilityStart) || requestedEnd.isAfter(availabilityEnd)) {
     throw new BadRequest(
-      `Hor\xE1rio fora da disponibilidade do m\xE9dico (${availabilityStart.format(
-        "HH:mm"
-      )} - ${availabilityEnd.format("HH:mm")})`
+      "Hor\xE1rio solicitado est\xE1 fora do per\xEDodo de disponibilidade do m\xE9dico"
     );
   }
-  const conflictingAppointment = await prisma.appointment.findFirst({
+  const existingAppointment = await prisma.appointment.findFirst({
     where: {
-      doctorId,
-      status: {
-        notIn: ["cancelled", "no_show"]
+      professionalId,
+      organizationId,
+      startTime: {
+        lt: localEndTime
       },
-      OR: [
-        {
-          AND: [
-            { startTime: { lte: localStartTime } },
-            { endTime: { gt: localStartTime } }
-          ]
-        },
-        {
-          AND: [
-            { startTime: { lt: localEndTime } },
-            { endTime: { gte: localEndTime } }
-          ]
-        },
-        {
-          AND: [
-            { startTime: { gte: localStartTime } },
-            { endTime: { lte: localEndTime } }
-          ]
-        }
-      ]
-    },
-    include: {
-      patient: {
-        select: {
-          id: true,
-          name: true
-        }
+      endTime: {
+        gt: localStartTime
+      },
+      status: {
+        in: ["scheduled", "confirmed"]
       }
     }
   });
-  if (conflictingAppointment) {
-    console.log(
-      `\u274C CONFLITO ENCONTRADO: Agendamento ID ${conflictingAppointment.id}`
-    );
-    console.log(
-      `   Hor\xE1rio conflitante: ${(0, import_moment_timezone2.default)(conflictingAppointment.startTime).tz(TIMEZONE2).format("DD/MM/YYYY HH:mm")} - ${(0, import_moment_timezone2.default)(conflictingAppointment.endTime).tz(TIMEZONE2).format("HH:mm")}`
-    );
-    console.log(
-      `   Paciente: ${conflictingAppointment.patient.name} (ID: ${conflictingAppointment.patient.id})`
-    );
-    console.log(`   Status: ${conflictingAppointment.status}`);
-    throw new BadRequest("Este hor\xE1rio j\xE1 est\xE1 ocupado");
+  if (existingAppointment) {
+    throw new BadRequest("J\xE1 existe um agendamento neste hor\xE1rio");
   }
-  console.log(
-    `\u2705 HOR\xC1RIO DISPON\xCDVEL: ${(0, import_moment_timezone2.default)(localStartTime).tz(TIMEZONE2).format("DD/MM/YYYY HH:mm")} - ${(0, import_moment_timezone2.default)(localEndTime).tz(TIMEZONE2).format("HH:mm")}`
-  );
+  return true;
 }
-async function generateAvailableSlots(doctorId, date) {
+async function generateAvailableSlots(professionalId, date) {
   console.log(`
 === INICIANDO GERA\xC7\xC3O DE SLOTS ===`);
   console.log(`Data solicitada: ${date}`);
-  console.log(`M\xE9dico ID: ${doctorId}`);
+  console.log(`Profissional ID: ${professionalId}`);
   const requestedDate = (0, import_moment_timezone2.default)(date).tz(TIMEZONE2);
   const dayOfWeek = requestedDate.day();
   console.log(`Dia da semana: ${dayOfWeek} (${requestedDate.format("dddd")})`);
   const availability = await prisma.availability.findFirst({
     where: {
-      doctorId,
+      professionalId,
       dayOfWeek,
       isActive: true
     }
@@ -18905,7 +18868,7 @@ async function generateAvailableSlots(doctorId, date) {
   );
   const existingAppointments = await prisma.appointment.findMany({
     where: {
-      doctorId,
+      professionalId,
       startTime: {
         gte: startOfDay,
         lte: endOfDay
@@ -18919,7 +18882,7 @@ async function generateAvailableSlots(doctorId, date) {
     }
   });
   console.log(`=== AGENDAMENTOS EXISTENTES PARA ${date} ===`);
-  console.log(`M\xE9dico ID: ${doctorId}`);
+  console.log(`Profissional ID: ${professionalId}`);
   console.log(`Total de agendamentos: ${existingAppointments.length}`);
   existingAppointments.forEach((appointment, index2) => {
     console.log(
@@ -19043,30 +19006,56 @@ async function generateAvailableSlots(doctorId, date) {
   return slots;
 }
 var createAppointment = async (appointmentData) => {
-  const { patientId, doctorId, startTime, endTime, notes } = appointmentData;
+  const {
+    patientId,
+    professionalId,
+    organizationId,
+    startTime,
+    endTime,
+    notes
+  } = appointmentData;
   const patientIdString = typeof patientId === "string" ? patientId : patientId.id;
-  const doctorIdString = typeof doctorId === "string" ? doctorId : doctorId.id;
+  const professionalIdString = typeof professionalId === "string" ? professionalId : professionalId.id;
+  const organizationIdString = typeof organizationId === "string" ? organizationId : organizationId.id;
   const patient = await prisma.users.findUnique({
     where: { id: patientIdString }
   });
   if (!patient) {
     throw new Error("Paciente n\xE3o encontrado");
   }
-  const doctor = await prisma.users.findUnique({
-    where: { id: doctorIdString, register: "doctor" }
+  const professional = await prisma.users.findUnique({
+    where: { id: professionalIdString }
   });
-  if (!doctor) {
-    throw new Error("M\xE9dico n\xE3o encontrado");
+  if (!professional) {
+    throw new Error("Profissional n\xE3o encontrado");
+  }
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationIdString }
+  });
+  if (!organization) {
+    throw new Error("Organiza\xE7\xE3o n\xE3o encontrada");
   }
   await checkSlotAvailability(
-    doctorIdString,
+    professionalIdString,
+    organizationIdString,
     new Date(startTime),
     new Date(endTime)
   );
+  const canSchedule = await canPatientScheduleWithProfessional(
+    patientIdString,
+    professionalIdString,
+    new Date(startTime)
+  );
+  if (!canSchedule.canSchedule) {
+    throw new BadRequest(
+      canSchedule.reason || "N\xE3o \xE9 poss\xEDvel agendar este hor\xE1rio"
+    );
+  }
   const appointment = await prisma.appointment.create({
     data: {
       patientId: patientIdString,
-      doctorId: doctorIdString,
+      professionalId: professionalIdString,
+      organizationId: organizationIdString,
       startTime: (0, import_moment_timezone2.default)(startTime).add(3, "hours").toDate(),
       endTime: (0, import_moment_timezone2.default)(endTime).add(3, "hours").toDate(),
       notes: notes || "",
@@ -19081,12 +19070,18 @@ var createAppointment = async (appointmentData) => {
           phone: true
         }
       },
-      doctor: {
+      professional: {
         select: {
           id: true,
           name: true,
           email: true,
           phone: true
+        }
+      },
+      organization: {
+        select: {
+          id: true,
+          name: true
         }
       }
     }
@@ -19098,6 +19093,61 @@ var createAppointment = async (appointmentData) => {
   }
   return appointment;
 };
+var canPatientScheduleWithProfessional = async (patientId, professionalId, requestedDate) => {
+  try {
+    if (requestedDate) {
+      const startOfDay = (0, import_moment_timezone2.default)(requestedDate).startOf("day").toDate();
+      const endOfDay = (0, import_moment_timezone2.default)(requestedDate).endOf("day").toDate();
+      const existingAppointment = await prisma.appointment.findFirst({
+        where: {
+          patientId,
+          professionalId,
+          startTime: {
+            gte: startOfDay,
+            lte: endOfDay
+          },
+          status: {
+            in: ["scheduled", "confirmed"]
+          }
+        },
+        include: {
+          patient: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          },
+          professional: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          }
+        }
+      });
+      if (existingAppointment) {
+        return {
+          canSchedule: false,
+          reason: `Voc\xEA j\xE1 possui um agendamento com ${existingAppointment.professional.name} no dia ${(0, import_moment_timezone2.default)(existingAppointment.startTime).format(
+            "DD/MM/YYYY"
+          )} \xE0s ${(0, import_moment_timezone2.default)(existingAppointment.startTime).format("HH:mm")}`,
+          existingAppointment
+        };
+      }
+    }
+    return {
+      canSchedule: true
+    };
+  } catch (error) {
+    console.error("Erro ao verificar disponibilidade do paciente:", error);
+    return {
+      canSchedule: false,
+      reason: "Erro ao verificar disponibilidade"
+    };
+  }
+};
 function adjustAppointmentTimes(appointments) {
   return appointments.map((appointment) => ({
     ...appointment,
@@ -19105,34 +19155,20 @@ function adjustAppointmentTimes(appointments) {
     endTime: appointment.endTime ? (0, import_moment_timezone2.default)(appointment.endTime).subtract(3, "hours").toISOString() : appointment.endTime
   }));
 }
-async function getPatientAppointments(patientId, status) {
-  const where = { patientId };
+async function getPatientAppointments(patientId, organizationId, status) {
+  const whereClause = {
+    patientId
+  };
+  if (organizationId) {
+    whereClause.organizationId = organizationId;
+  }
   if (status) {
-    where.status = status;
+    whereClause.status = status;
   }
   const appointments = await prisma.appointment.findMany({
-    where,
+    where: whereClause,
     select: selectAppointmentWithUsers,
-    orderBy: {
-      startTime: "desc"
-    }
-  });
-  return adjustAppointmentTimes(appointments);
-}
-async function getDoctorAppointments(doctorId, startDate, endDate) {
-  const where = { doctorId };
-  if (startDate && endDate) {
-    where.startTime = {
-      gte: startDate,
-      lte: endDate
-    };
-  }
-  const appointments = await prisma.appointment.findMany({
-    where,
-    select: selectAppointmentWithUsers,
-    orderBy: {
-      startTime: "asc"
-    }
+    orderBy: { startTime: "desc" }
   });
   return adjustAppointmentTimes(appointments);
 }
@@ -19141,7 +19177,7 @@ async function updateAppointmentStatus(appointmentId, status, userId, userRole) 
     where: { id: appointmentId },
     include: {
       patient: true,
-      doctor: true
+      professional: true
     }
   });
   if (!appointment) {
@@ -19152,7 +19188,7 @@ async function updateAppointmentStatus(appointmentId, status, userId, userRole) 
       "Voc\xEA n\xE3o tem permiss\xE3o para alterar este agendamento"
     );
   }
-  if (userRole === "doctor" && appointment.doctorId !== userId) {
+  if (userRole === "professional" && appointment.professionalId !== userId) {
     throw new Unauthorized(
       "Voc\xEA n\xE3o tem permiss\xE3o para alterar este agendamento"
     );
@@ -19186,40 +19222,6 @@ async function updateAppointmentStatus(appointmentId, status, userId, userRole) 
   }
   return updatedAppointment;
 }
-async function createDoctorAvailability(doctorId, availability) {
-  const existing = await prisma.availability.findFirst({
-    where: {
-      doctorId,
-      dayOfWeek: availability.dayOfWeek,
-      isActive: true
-    }
-  });
-  if (existing) {
-    throw new BadRequest(
-      "J\xE1 existe disponibilidade configurada para este dia da semana"
-    );
-  }
-  const created = await prisma.availability.create({
-    data: {
-      doctorId,
-      dayOfWeek: availability.dayOfWeek,
-      startTime: availability.startTime,
-      endTime: availability.endTime,
-      isActive: true
-    }
-  });
-  return created;
-}
-async function getDoctorAvailability(doctorId) {
-  const availabilities = await prisma.availability.findMany({
-    where: {
-      doctorId,
-      isActive: true
-    },
-    orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }]
-  });
-  return availabilities;
-}
 var getAppointmentById = async (appointmentId) => {
   try {
     const appointment = await prisma.appointment.findUnique({
@@ -19235,7 +19237,7 @@ var getAppointmentById = async (appointmentId) => {
             phone: true
           }
         },
-        doctor: {
+        professional: {
           select: {
             id: true,
             name: true,
@@ -19489,48 +19491,6 @@ describe("appointmentService", () => {
       });
     });
   });
-  describe("getDoctorAppointments", () => {
-    it("deve retornar agendamentos do m\xE9dico", async () => {
-      const mockAppointments = [
-        {
-          id: "appointment-id",
-          patientId: "patient-id",
-          doctorId: "doctor-id",
-          startTime: /* @__PURE__ */ new Date(),
-          endTime: /* @__PURE__ */ new Date(),
-          status: "scheduled"
-        }
-      ];
-      vi.mocked(prisma.appointment.findMany).mockResolvedValue(
-        mockAppointments
-      );
-      const result = await getDoctorAppointments("doctor-id");
-      globalExpect(result[0].startTime).toBe("2024-01-01T08:00:00.000Z");
-      globalExpect(result[0].endTime).toBe("2024-01-01T08:00:00.000Z");
-      globalExpect(prisma.appointment.findMany).toHaveBeenCalledWith({
-        where: { doctorId: "doctor-id" },
-        select: globalExpect.any(Object),
-        orderBy: { startTime: "asc" }
-      });
-    });
-    it("deve filtrar por data quando fornecido", async () => {
-      vi.mocked(prisma.appointment.findMany).mockResolvedValue([]);
-      const startDate = /* @__PURE__ */ new Date("2024-01-01");
-      const endDate = /* @__PURE__ */ new Date("2024-01-02");
-      await getDoctorAppointments("doctor-id", startDate, endDate);
-      globalExpect(prisma.appointment.findMany).toHaveBeenCalledWith({
-        where: {
-          doctorId: "doctor-id",
-          startTime: {
-            gte: startDate,
-            lte: endDate
-          }
-        },
-        select: globalExpect.any(Object),
-        orderBy: { startTime: "asc" }
-      });
-    });
-  });
   describe("updateAppointmentStatus", () => {
     it("deve atualizar status do agendamento", async () => {
       const mockAppointment = {
@@ -19604,78 +19564,6 @@ describe("appointmentService", () => {
           "patient"
         )
       ).rejects.toThrow(BadRequest);
-    });
-  });
-  describe("createDoctorAvailability", () => {
-    it("deve criar disponibilidade para m\xE9dico", async () => {
-      const availabilityData = {
-        dayOfWeek: 1,
-        startTime: "08:00",
-        endTime: "17:00"
-      };
-      const mockCreated = {
-        id: "availability-id",
-        doctorId: "doctor-id",
-        ...availabilityData,
-        isActive: true,
-        createdAt: /* @__PURE__ */ new Date(),
-        updatedAt: /* @__PURE__ */ new Date()
-      };
-      vi.mocked(prisma.availability.findFirst).mockResolvedValue(null);
-      vi.mocked(prisma.availability.create).mockResolvedValue(mockCreated);
-      const result = await createDoctorAvailability(
-        "doctor-id",
-        availabilityData
-      );
-      globalExpect(result).toEqual(mockCreated);
-    });
-    it("deve lan\xE7ar erro se j\xE1 existir disponibilidade conflitante", async () => {
-      const availabilityData = {
-        dayOfWeek: 1,
-        startTime: "08:00",
-        endTime: "17:00"
-      };
-      vi.mocked(prisma.availability.findFirst).mockResolvedValue({
-        id: "existing-availability-id",
-        doctorId: "doctor-id",
-        dayOfWeek: 1,
-        startTime: "07:00",
-        endTime: "16:00",
-        isActive: true,
-        createdAt: /* @__PURE__ */ new Date(),
-        updatedAt: /* @__PURE__ */ new Date()
-      });
-      await globalExpect(
-        createDoctorAvailability("doctor-id", availabilityData)
-      ).rejects.toThrow(BadRequest);
-    });
-  });
-  describe("getDoctorAvailability", () => {
-    it("deve retornar disponibilidades do m\xE9dico", async () => {
-      const mockAvailabilities = [
-        {
-          id: "availability-id",
-          doctorId: "doctor-id",
-          dayOfWeek: 1,
-          startTime: "08:00",
-          endTime: "17:00",
-          isActive: true,
-          createdAt: /* @__PURE__ */ new Date(),
-          updatedAt: /* @__PURE__ */ new Date()
-        }
-      ];
-      vi.mocked(prisma.availability.findMany).mockResolvedValue(
-        mockAvailabilities
-      );
-      const result = await getDoctorAvailability("doctor-id");
-      globalExpect(result).toEqual(mockAvailabilities);
-      globalExpect(prisma.availability.findMany).toHaveBeenCalledWith({
-        where: {
-          doctorId: "doctor-id",
-          isActive: true
-        },
-        orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }]
-      });
     });
   });
   describe("getAppointmentById", () => {

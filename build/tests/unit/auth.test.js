@@ -18639,10 +18639,12 @@ async function autenticarToken(request, reply) {
       throw new Unauthorized("Formato de token inv\xE1lido. Use: Bearer <token>");
     }
     await request.jwtVerify();
-    const { userId, register } = request.user;
+    const { userId, primaryRole, primaryOrganizationId, userOrganizations } = request.user;
     request.usuario = {
       id: userId,
-      register
+      primaryRole,
+      primaryOrganizationId,
+      userOrganizations
     };
   } catch (error) {
     if (error instanceof Unauthorized) {

@@ -32,8 +32,8 @@ var prisma = new import_client.PrismaClient();
 
 // src/controllers/attendanceController.ts
 async function postAttendance(request, reply) {
-  const { id: doctorId, register } = request.usuario;
-  if (register !== "doctor") {
+  const { id: professionalId, primaryRole } = request.usuario;
+  if (primaryRole !== "professional") {
     return reply.status(403).send({
       status: "error",
       message: "Apenas profissionais podem registrar atendimentos"
@@ -43,13 +43,13 @@ async function postAttendance(request, reply) {
   const attendance = await prisma.attendance.create({
     data: {
       patientId,
-      doctorId,
+      professionalId,
       description,
       date: date ? new Date(date) : void 0
     },
     include: {
       patient: true,
-      doctor: true
+      professional: true
     }
   });
   return reply.status(201).send({
@@ -58,10 +58,10 @@ async function postAttendance(request, reply) {
   });
 }
 async function getMyAttendances(request, reply) {
-  const { id: userId, register } = request.usuario;
+  const { id: userId, primaryRole } = request.usuario;
   let where = {};
-  if (register === "doctor") {
-    where = { doctorId: userId };
+  if (primaryRole === "professional") {
+    where = { professionalId: userId };
   } else {
     where = { patientId: userId };
   }
@@ -69,7 +69,7 @@ async function getMyAttendances(request, reply) {
     where,
     include: {
       patient: true,
-      doctor: true
+      professional: true
     },
     orderBy: { date: "desc" }
   });
@@ -79,8 +79,8 @@ async function getMyAttendances(request, reply) {
   });
 }
 async function getPatientAttendances(request, reply) {
-  const { id: doctorId, register } = request.usuario;
-  if (register !== "doctor") {
+  const { id: professionalId, primaryRole } = request.usuario;
+  if (primaryRole !== "professional") {
     return reply.status(403).send({
       status: "error",
       message: "Apenas profissionais podem acessar o hist\xF3rico de pacientes"
@@ -91,7 +91,7 @@ async function getPatientAttendances(request, reply) {
     where: { patientId },
     include: {
       patient: true,
-      doctor: true
+      professional: true
     },
     orderBy: { date: "desc" }
   });

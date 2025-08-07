@@ -23,7 +23,7 @@ __export(usuario_exports, {
   usuarioDocs: () => usuarioDocs
 });
 module.exports = __toCommonJS(usuario_exports);
-var import_v43 = require("zod/v4");
+var import_zod3 = require("zod");
 
 // src/_errors/unauthorized.ts
 var Unauthorized = class extends Error {
@@ -45,10 +45,12 @@ async function autenticarToken(request, reply) {
       throw new Unauthorized("Formato de token inv\xE1lido. Use: Bearer <token>");
     }
     await request.jwtVerify();
-    const { userId, register } = request.user;
+    const { userId, primaryRole, primaryOrganizationId, userOrganizations } = request.user;
     request.usuario = {
       id: userId,
-      register
+      primaryRole,
+      primaryOrganizationId,
+      userOrganizations
     };
   } catch (error) {
     if (error instanceof Unauthorized) {
@@ -65,85 +67,180 @@ async function autenticarToken(request, reply) {
 }
 
 // src/utils/scheme.ts
-var import_v4 = require("zod/v4");
-var headersSchema = import_v4.z.object({
-  authorization: import_v4.z.string()
+var import_zod = require("zod");
+var headersSchema = import_zod.z.object({
+  authorization: import_zod.z.string()
 });
 
 // src/types/usuario.ts
-var import_v42 = require("zod/v4");
-
-// src/utils/formatDate.ts
-function formatDate(date) {
-  if (!date) return null;
-  const dateObj = typeof date === "string" ? new Date(date) : date;
-  if (isNaN(dateObj.getTime())) return null;
-  return dateObj.toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "America/Sao_Paulo"
-  });
-}
-
-// src/types/usuario.ts
-var schemaRegister = import_v42.z.enum(["patient", "parents", "doctor", "attendant"]);
-var responseUsuarioSchemaProps = {
-  id: import_v42.z.string(),
-  name: import_v42.z.string().nullish(),
-  email: import_v42.z.string().transform((value) => value.toLowerCase()),
-  image: import_v42.z.string().nullish(),
-  birthDate: import_v42.z.coerce.string().or(import_v42.z.date()).transform(formatDate).nullish(),
-  cpf: import_v42.z.string(),
-  phone: import_v42.z.string().nullish(),
-  address: import_v42.z.string().nullish(),
-  numberOfAddress: import_v42.z.string().nullish(),
-  complement: import_v42.z.string().nullish(),
-  city: import_v42.z.string().nullish(),
-  state: import_v42.z.string().nullish(),
-  zipCode: import_v42.z.string().nullish(),
-  country: import_v42.z.string().nullish(),
-  cid: import_v42.z.string().nullish(),
-  register: schemaRegister,
-  createdAt: import_v42.z.coerce.string().or(import_v42.z.date()).transform(formatDate).nullish(),
-  updatedAt: import_v42.z.coerce.string().or(import_v42.z.date()).transform(formatDate).nullish()
-};
-var responseUsuarioSchema = import_v42.z.object(responseUsuarioSchemaProps);
-var requestUsuarioSchema = responseUsuarioSchema.omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true
-}).extend({
-  password: import_v42.z.string().describe("Senha obrigat\xF3ria para cria\xE7\xE3o do usu\xE1rio")
+var import_zod2 = require("zod");
+var schemaRegister = import_zod2.z.enum([
+  "patient",
+  "parents",
+  "professional",
+  "attendant"
+]);
+var schemaUsuario = import_zod2.z.object({
+  name: import_zod2.z.string().min(1, "Nome \xE9 obrigat\xF3rio"),
+  email: import_zod2.z.string().email("Email inv\xE1lido"),
+  password: import_zod2.z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  cpf: import_zod2.z.string().min(11, "CPF deve ter pelo menos 11 caracteres"),
+  phone: import_zod2.z.string().optional(),
+  birthDate: import_zod2.z.string().optional(),
+  address: import_zod2.z.string().optional(),
+  numberOfAddress: import_zod2.z.string().optional(),
+  complement: import_zod2.z.string().optional(),
+  city: import_zod2.z.string().optional(),
+  state: import_zod2.z.string().optional(),
+  zipCode: import_zod2.z.string().optional(),
+  country: import_zod2.z.string().optional(),
+  image: import_zod2.z.string().optional()
 });
-var editUsuarioSchema = requestUsuarioSchema.partial();
-var editUsuarioByAdminSchema = editUsuarioSchema.extend({
-  cid: import_v42.z.string().optional().describe("CID - C\xF3digo Internacional de Doen\xE7as (apenas administradores)")
+var schemaUsuarioUpdate = import_zod2.z.object({
+  name: import_zod2.z.string().min(1, "Nome \xE9 obrigat\xF3rio").optional(),
+  email: import_zod2.z.string().email("Email inv\xE1lido").optional(),
+  phone: import_zod2.z.string().optional(),
+  birthDate: import_zod2.z.string().optional(),
+  address: import_zod2.z.string().optional(),
+  numberOfAddress: import_zod2.z.string().optional(),
+  complement: import_zod2.z.string().optional(),
+  city: import_zod2.z.string().optional(),
+  state: import_zod2.z.string().optional(),
+  zipCode: import_zod2.z.string().optional(),
+  country: import_zod2.z.string().optional(),
+  image: import_zod2.z.string().optional()
 });
-var responseUsuarioLoginSchema = import_v42.z.object({
-  token: import_v42.z.string(),
-  usuario: responseUsuarioSchema
+var schemaPatientCID = import_zod2.z.object({
+  patientId: import_zod2.z.string().min(1, "ID do paciente \xE9 obrigat\xF3rio"),
+  professionalId: import_zod2.z.string().min(1, "ID do profissional \xE9 obrigat\xF3rio"),
+  organizationId: import_zod2.z.string().min(1, "ID da organiza\xE7\xE3o \xE9 obrigat\xF3rio"),
+  cid: import_zod2.z.string().min(1, "CID \xE9 obrigat\xF3rio"),
+  description: import_zod2.z.string().optional()
 });
-var responseDoctorSchema = import_v42.z.object({
-  id: import_v42.z.string(),
-  name: import_v42.z.string().nullish(),
-  email: import_v42.z.string().transform((value) => value.toLowerCase()),
-  image: import_v42.z.string().nullish(),
-  phone: import_v42.z.string().nullish(),
-  address: import_v42.z.string().nullish(),
-  city: import_v42.z.string().nullish(),
-  state: import_v42.z.string().nullish(),
-  cid: import_v42.z.string().nullish(),
-  register: schemaRegister,
-  createdAt: import_v42.z.coerce.string().or(import_v42.z.date()).transform(formatDate).nullish()
+var schemaPatientCIDUpdate = import_zod2.z.object({
+  cid: import_zod2.z.string().min(1, "CID \xE9 obrigat\xF3rio"),
+  description: import_zod2.z.string().optional()
 });
+var schemaUsuarioCreate = import_zod2.z.object({
+  name: import_zod2.z.string().min(1, "Nome \xE9 obrigat\xF3rio"),
+  email: import_zod2.z.string().email("Email inv\xE1lido"),
+  password: import_zod2.z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  cpf: import_zod2.z.string().min(11, "CPF deve ter pelo menos 11 caracteres"),
+  phone: import_zod2.z.string().optional(),
+  birthDate: import_zod2.z.string().optional(),
+  address: import_zod2.z.string().optional(),
+  numberOfAddress: import_zod2.z.string().optional(),
+  complement: import_zod2.z.string().optional(),
+  city: import_zod2.z.string().optional(),
+  state: import_zod2.z.string().optional(),
+  zipCode: import_zod2.z.string().optional(),
+  country: import_zod2.z.string().optional(),
+  image: import_zod2.z.string().optional()
+});
+var schemaUsuarioCreateAdmin = import_zod2.z.object({
+  name: import_zod2.z.string().min(1, "Nome \xE9 obrigat\xF3rio"),
+  email: import_zod2.z.string().email("Email inv\xE1lido"),
+  password: import_zod2.z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  cpf: import_zod2.z.string().min(11, "CPF deve ter pelo menos 11 caracteres"),
+  phone: import_zod2.z.string().optional(),
+  birthDate: import_zod2.z.string().optional(),
+  address: import_zod2.z.string().optional(),
+  numberOfAddress: import_zod2.z.string().optional(),
+  complement: import_zod2.z.string().optional(),
+  city: import_zod2.z.string().optional(),
+  state: import_zod2.z.string().optional(),
+  zipCode: import_zod2.z.string().optional(),
+  country: import_zod2.z.string().optional(),
+  image: import_zod2.z.string().optional()
+});
+var schemaUsuarioUpdateAdmin = import_zod2.z.object({
+  name: import_zod2.z.string().min(1, "Nome \xE9 obrigat\xF3rio").optional(),
+  email: import_zod2.z.string().email("Email inv\xE1lido").optional(),
+  password: import_zod2.z.string().min(6, "Senha deve ter pelo menos 6 caracteres").optional(),
+  cpf: import_zod2.z.string().min(11, "CPF deve ter pelo menos 11 caracteres").optional(),
+  phone: import_zod2.z.string().optional(),
+  birthDate: import_zod2.z.string().optional(),
+  address: import_zod2.z.string().optional(),
+  numberOfAddress: import_zod2.z.string().optional(),
+  complement: import_zod2.z.string().optional(),
+  city: import_zod2.z.string().optional(),
+  state: import_zod2.z.string().optional(),
+  zipCode: import_zod2.z.string().optional(),
+  country: import_zod2.z.string().optional(),
+  image: import_zod2.z.string().optional()
+});
+var schemaUsuarioCreateByProfessional = import_zod2.z.object({
+  name: import_zod2.z.string().min(1, "Nome \xE9 obrigat\xF3rio"),
+  email: import_zod2.z.string().email("Email inv\xE1lido"),
+  password: import_zod2.z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  cpf: import_zod2.z.string().min(11, "CPF deve ter pelo menos 11 caracteres"),
+  phone: import_zod2.z.string().optional(),
+  birthDate: import_zod2.z.string().optional(),
+  address: import_zod2.z.string().optional(),
+  numberOfAddress: import_zod2.z.string().optional(),
+  complement: import_zod2.z.string().optional(),
+  city: import_zod2.z.string().optional(),
+  state: import_zod2.z.string().optional(),
+  zipCode: import_zod2.z.string().optional(),
+  country: import_zod2.z.string().optional(),
+  image: import_zod2.z.string().optional()
+});
+var schemaUsuarioUpdateByProfessional = import_zod2.z.object({
+  name: import_zod2.z.string().min(1, "Nome \xE9 obrigat\xF3rio").optional(),
+  email: import_zod2.z.string().email("Email inv\xE1lido").optional(),
+  password: import_zod2.z.string().min(6, "Senha deve ter pelo menos 6 caracteres").optional(),
+  cpf: import_zod2.z.string().min(11, "CPF deve ter pelo menos 11 caracteres").optional(),
+  phone: import_zod2.z.string().optional(),
+  birthDate: import_zod2.z.string().optional(),
+  address: import_zod2.z.string().optional(),
+  numberOfAddress: import_zod2.z.string().optional(),
+  complement: import_zod2.z.string().optional(),
+  city: import_zod2.z.string().optional(),
+  state: import_zod2.z.string().optional(),
+  zipCode: import_zod2.z.string().optional(),
+  country: import_zod2.z.string().optional(),
+  image: import_zod2.z.string().optional()
+});
+var editUsuarioSchema = schemaUsuarioUpdate;
+var editUsuarioByAdminSchema = schemaUsuarioUpdateByProfessional;
+var requestUsuarioSchema = schemaUsuarioCreate;
+var responseProfessionalSchema = import_zod2.z.object({
+  id: import_zod2.z.string(),
+  name: import_zod2.z.string(),
+  email: import_zod2.z.string(),
+  cpf: import_zod2.z.string(),
+  phone: import_zod2.z.string().nullable(),
+  birthDate: import_zod2.z.string().nullable(),
+  address: import_zod2.z.string().nullable(),
+  numberOfAddress: import_zod2.z.string().nullable(),
+  complement: import_zod2.z.string().nullable(),
+  city: import_zod2.z.string().nullable(),
+  state: import_zod2.z.string().nullable(),
+  zipCode: import_zod2.z.string().nullable(),
+  country: import_zod2.z.string().nullable(),
+  image: import_zod2.z.string().nullable(),
+  primaryRole: import_zod2.z.string(),
+  primaryOrganizationId: import_zod2.z.string().nullable(),
+  organizations: import_zod2.z.array(
+    import_zod2.z.object({
+      id: import_zod2.z.string(),
+      name: import_zod2.z.string(),
+      role: import_zod2.z.string()
+    })
+  ),
+  createdAt: import_zod2.z.string(),
+  updatedAt: import_zod2.z.string()
+});
+var responseUsuarioLoginSchema = import_zod2.z.object({
+  token: import_zod2.z.string(),
+  usuario: responseProfessionalSchema
+});
+var responseUsuarioSchema = responseProfessionalSchema;
 
 // src/docs/usuario.ts
-var errorResponseSchema = import_v43.z.object({
-  status: import_v43.z.literal("error"),
-  message: import_v43.z.string()
+var errorResponseSchema = import_zod3.z.object({
+  status: import_zod3.z.literal("error"),
+  message: import_zod3.z.string()
 });
 var usuarioDocs = class {
 };
@@ -155,8 +252,8 @@ usuarioDocs.getUsuario = {
     description: "Retorna os dados do usu\xE1rio logado",
     headers: headersSchema,
     response: {
-      200: import_v43.z.object({
-        status: import_v43.z.literal("success"),
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
         data: responseUsuarioSchema
       }),
       400: errorResponseSchema,
@@ -164,15 +261,15 @@ usuarioDocs.getUsuario = {
     }
   }
 };
-usuarioDocs.getDoctors = {
+usuarioDocs.getProfessionals = {
   schema: {
     tags: ["Usuario"],
-    summary: "Listar todos os m\xE9dicos",
-    description: "Retorna todos os m\xE9dicos cadastrados no sistema",
+    summary: "Listar todos os profissionais",
+    description: "Retorna todos os profissionais cadastrados no sistema",
     response: {
-      200: import_v43.z.object({
-        status: import_v43.z.literal("success"),
-        data: import_v43.z.array(responseDoctorSchema)
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
+        data: import_zod3.z.array(responseProfessionalSchema)
       }),
       500: errorResponseSchema
     }
@@ -186,9 +283,9 @@ usuarioDocs.getAllUsuarios = {
     description: "Retorna todos os usu\xE1rios cadastrados no sistema (apenas m\xE9dicos podem acessar)",
     headers: headersSchema,
     response: {
-      200: import_v43.z.object({
-        status: import_v43.z.literal("success"),
-        data: import_v43.z.array(responseUsuarioSchema)
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
+        data: import_zod3.z.array(responseUsuarioSchema)
       }),
       401: errorResponseSchema,
       403: errorResponseSchema,
@@ -203,12 +300,12 @@ usuarioDocs.getUsuarioById = {
     summary: "Buscar usu\xE1rio por ID",
     description: "Retorna todas as informa\xE7\xF5es de um usu\xE1rio espec\xEDfico pelo ID. Apenas m\xE9dicos podem acessar.",
     headers: headersSchema,
-    params: import_v43.z.object({
-      id: import_v43.z.string().describe("ID do usu\xE1rio")
+    params: import_zod3.z.object({
+      id: import_zod3.z.string().describe("ID do usu\xE1rio")
     }),
     response: {
-      200: import_v43.z.object({
-        status: import_v43.z.literal("success"),
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
         data: responseUsuarioSchema
       }),
       401: errorResponseSchema,
@@ -225,13 +322,13 @@ usuarioDocs.putUsuarioByDoctor = {
     summary: "Atualizar dados de usu\xE1rio (m\xE9dico)",
     description: "Permite que m\xE9dicos atualizem os dados de qualquer usu\xE1rio do sistema, incluindo o campo CID",
     headers: headersSchema,
-    params: import_v43.z.object({
-      id: import_v43.z.string().describe("ID do usu\xE1rio a ser atualizado")
+    params: import_zod3.z.object({
+      id: import_zod3.z.string().describe("ID do usu\xE1rio a ser atualizado")
     }),
     body: editUsuarioByAdminSchema,
     response: {
-      200: import_v43.z.object({
-        status: import_v43.z.literal("success"),
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
         data: responseUsuarioSchema
       }),
       400: errorResponseSchema,
@@ -247,13 +344,13 @@ usuarioDocs.loginUsuario = {
     tags: ["Usuario"],
     summary: "Login do usu\xE1rio",
     description: "Login do usu\xE1rio",
-    body: import_v43.z.object({
-      email: import_v43.z.string().transform((value) => value.toLowerCase()),
-      password: import_v43.z.string()
+    body: import_zod3.z.object({
+      email: import_zod3.z.string().transform((value) => value.toLowerCase()),
+      password: import_zod3.z.string()
     }),
     response: {
-      200: import_v43.z.object({
-        status: import_v43.z.literal("success"),
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
         data: responseUsuarioLoginSchema
       }),
       400: errorResponseSchema,
@@ -269,8 +366,8 @@ usuarioDocs.postUsuario = {
     description: "Cria um novo usu\xE1rio",
     body: requestUsuarioSchema,
     response: {
-      200: import_v43.z.object({
-        status: import_v43.z.literal("success"),
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
         data: responseUsuarioLoginSchema
       }),
       400: errorResponseSchema,
@@ -286,8 +383,8 @@ usuarioDocs.postUsuarioAdmin = {
     description: "Cria um novo usu\xE1rio com a role especificada",
     body: requestUsuarioSchema,
     response: {
-      200: import_v43.z.object({
-        status: import_v43.z.literal("success"),
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
         data: responseUsuarioLoginSchema
       }),
       400: errorResponseSchema,
@@ -304,8 +401,8 @@ usuarioDocs.putUsuario = {
     headers: headersSchema,
     body: editUsuarioSchema,
     response: {
-      200: import_v43.z.object({
-        status: import_v43.z.literal("success"),
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
         data: responseUsuarioSchema
       }),
       400: errorResponseSchema,
@@ -317,22 +414,235 @@ usuarioDocs.deleteUsuario = {
   preHandler: [autenticarToken],
   schema: {
     tags: ["Usuario"],
-    summary: "Deletar um usu\xE1rio",
-    description: "Deleta um usu\xE1rio espec\xEDfico. Apenas admins podem deletar usu\xE1rios.",
+    summary: "Deletar usu\xE1rio",
+    description: "Deleta um usu\xE1rio do sistema. Apenas administradores podem acessar.",
     headers: headersSchema,
-    params: import_v43.z.object({
-      id: import_v43.z.string().describe("ID do usu\xE1rio a ser deletado")
+    params: import_zod3.z.object({
+      id: import_zod3.z.string().describe("ID do usu\xE1rio a ser deletado")
     }),
     response: {
-      200: import_v43.z.object({
-        status: import_v43.z.literal("success"),
-        data: import_v43.z.object({
-          message: import_v43.z.string()
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
+        data: import_zod3.z.object({
+          message: import_zod3.z.string()
+        })
+      }),
+      401: errorResponseSchema,
+      403: errorResponseSchema,
+      404: errorResponseSchema,
+      500: errorResponseSchema
+    }
+  }
+};
+usuarioDocs.addUserToOrganization = {
+  preHandler: [autenticarToken],
+  schema: {
+    tags: ["Usuario"],
+    summary: "Adicionar usu\xE1rio a organiza\xE7\xE3o",
+    description: "Adiciona um usu\xE1rio existente a uma organiza\xE7\xE3o com um papel espec\xEDfico. Apenas administradores podem acessar.",
+    headers: headersSchema,
+    body: import_zod3.z.object({
+      userId: import_zod3.z.string().describe("ID do usu\xE1rio"),
+      organizationId: import_zod3.z.string().describe("ID da organiza\xE7\xE3o"),
+      role: import_zod3.z.enum([
+        "owner",
+        "admin",
+        "professional",
+        "attendant",
+        "patient",
+        "member"
+      ]).describe("Papel do usu\xE1rio na organiza\xE7\xE3o")
+    }),
+    response: {
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
+        data: import_zod3.z.object({
+          id: import_zod3.z.string(),
+          userId: import_zod3.z.string(),
+          organizationId: import_zod3.z.string(),
+          role: import_zod3.z.string(),
+          isActive: import_zod3.z.boolean(),
+          joinedAt: import_zod3.z.string(),
+          createdAt: import_zod3.z.string(),
+          updatedAt: import_zod3.z.string(),
+          organization: import_zod3.z.object({
+            id: import_zod3.z.string(),
+            name: import_zod3.z.string()
+          })
         })
       }),
       400: errorResponseSchema,
       401: errorResponseSchema,
+      403: errorResponseSchema,
       404: errorResponseSchema,
+      500: errorResponseSchema
+    }
+  }
+};
+usuarioDocs.getUserOrganizations = {
+  preHandler: [autenticarToken],
+  schema: {
+    tags: ["Usuario"],
+    summary: "Buscar organiza\xE7\xF5es de usu\xE1rio",
+    description: "Busca todas as organiza\xE7\xF5es de um usu\xE1rio espec\xEDfico. Apenas administradores podem acessar.",
+    headers: headersSchema,
+    params: import_zod3.z.object({
+      userId: import_zod3.z.string().describe("ID do usu\xE1rio")
+    }),
+    response: {
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
+        data: import_zod3.z.array(
+          import_zod3.z.object({
+            id: import_zod3.z.string(),
+            userId: import_zod3.z.string(),
+            organizationId: import_zod3.z.string(),
+            role: import_zod3.z.string(),
+            isActive: import_zod3.z.boolean(),
+            joinedAt: import_zod3.z.string(),
+            createdAt: import_zod3.z.string(),
+            updatedAt: import_zod3.z.string(),
+            organization: import_zod3.z.object({
+              id: import_zod3.z.string(),
+              name: import_zod3.z.string(),
+              description: import_zod3.z.string().nullable()
+            })
+          })
+        )
+      }),
+      401: errorResponseSchema,
+      403: errorResponseSchema,
+      404: errorResponseSchema,
+      500: errorResponseSchema
+    }
+  }
+};
+usuarioDocs.getUsersFromCurrentOrganization = {
+  preHandler: [autenticarToken],
+  schema: {
+    tags: ["Usuario"],
+    summary: "Buscar usu\xE1rios da organiza\xE7\xE3o atual",
+    description: "Busca todos os usu\xE1rios da organiza\xE7\xE3o atual do usu\xE1rio logado. Apenas administradores podem acessar.",
+    headers: headersSchema,
+    response: {
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
+        data: import_zod3.z.array(
+          import_zod3.z.object({
+            id: import_zod3.z.string(),
+            name: import_zod3.z.string().nullable(),
+            email: import_zod3.z.string(),
+            cpf: import_zod3.z.string(),
+            phone: import_zod3.z.string().nullable(),
+            birthDate: import_zod3.z.string().nullable(),
+            address: import_zod3.z.string().nullable(),
+            numberOfAddress: import_zod3.z.string().nullable(),
+            complement: import_zod3.z.string().nullable(),
+            city: import_zod3.z.string().nullable(),
+            state: import_zod3.z.string().nullable(),
+            zipCode: import_zod3.z.string().nullable(),
+            country: import_zod3.z.string().nullable(),
+            createdAt: import_zod3.z.string(),
+            updatedAt: import_zod3.z.string(),
+            primaryRole: import_zod3.z.string().nullable(),
+            primaryOrganizationId: import_zod3.z.string().nullable(),
+            organizations: import_zod3.z.array(
+              import_zod3.z.object({
+                id: import_zod3.z.string(),
+                role: import_zod3.z.string(),
+                joinedAt: import_zod3.z.string(),
+                isActive: import_zod3.z.boolean()
+              })
+            )
+          })
+        )
+      }),
+      400: errorResponseSchema,
+      401: errorResponseSchema,
+      403: errorResponseSchema,
+      500: errorResponseSchema
+    }
+  }
+};
+usuarioDocs.removeUserFromOrganization = {
+  preHandler: [autenticarToken],
+  schema: {
+    tags: ["Usuario"],
+    summary: "Remover usu\xE1rio da organiza\xE7\xE3o",
+    description: "Remove um usu\xE1rio da organiza\xE7\xE3o atual do usu\xE1rio logado. Apenas administradores podem acessar.",
+    headers: headersSchema,
+    params: import_zod3.z.object({
+      userId: import_zod3.z.string().describe("ID do usu\xE1rio a ser removido")
+    }),
+    response: {
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
+        data: import_zod3.z.object({
+          id: import_zod3.z.string(),
+          userId: import_zod3.z.string(),
+          organizationId: import_zod3.z.string(),
+          role: import_zod3.z.string(),
+          isActive: import_zod3.z.boolean(),
+          joinedAt: import_zod3.z.string(),
+          createdAt: import_zod3.z.string(),
+          updatedAt: import_zod3.z.string(),
+          organization: import_zod3.z.object({
+            id: import_zod3.z.string(),
+            name: import_zod3.z.string()
+          })
+        })
+      }),
+      400: errorResponseSchema,
+      401: errorResponseSchema,
+      403: errorResponseSchema,
+      404: errorResponseSchema,
+      500: errorResponseSchema
+    }
+  }
+};
+usuarioDocs.getAllUsersFromSystem = {
+  preHandler: [autenticarToken],
+  schema: {
+    tags: ["Usuario"],
+    summary: "Buscar todos os usu\xE1rios do sistema",
+    description: "Busca todos os usu\xE1rios do sistema. Apenas propriet\xE1rios, administradores e membros podem acessar.",
+    headers: headersSchema,
+    response: {
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
+        data: import_zod3.z.array(
+          import_zod3.z.object({
+            id: import_zod3.z.string(),
+            name: import_zod3.z.string().nullable(),
+            email: import_zod3.z.string(),
+            cpf: import_zod3.z.string(),
+            phone: import_zod3.z.string().nullable(),
+            birthDate: import_zod3.z.string().nullable(),
+            address: import_zod3.z.string().nullable(),
+            numberOfAddress: import_zod3.z.string().nullable(),
+            complement: import_zod3.z.string().nullable(),
+            city: import_zod3.z.string().nullable(),
+            state: import_zod3.z.string().nullable(),
+            zipCode: import_zod3.z.string().nullable(),
+            country: import_zod3.z.string().nullable(),
+            createdAt: import_zod3.z.string(),
+            updatedAt: import_zod3.z.string(),
+            primaryRole: import_zod3.z.string().nullable(),
+            primaryOrganizationId: import_zod3.z.string().nullable(),
+            organizations: import_zod3.z.array(
+              import_zod3.z.object({
+                id: import_zod3.z.string(),
+                name: import_zod3.z.string(),
+                role: import_zod3.z.string(),
+                joinedAt: import_zod3.z.string()
+              })
+            )
+          })
+        )
+      }),
+      400: errorResponseSchema,
+      401: errorResponseSchema,
+      403: errorResponseSchema,
       500: errorResponseSchema
     }
   }

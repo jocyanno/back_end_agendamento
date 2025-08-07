@@ -23,9 +23,9 @@ __export(scheme_exports, {
   headersSchema: () => headersSchema
 });
 module.exports = __toCommonJS(scheme_exports);
-var import_v4 = require("zod/v4");
-var headersSchema = import_v4.z.object({
-  authorization: import_v4.z.string()
+var import_zod = require("zod");
+var headersSchema = import_zod.z.object({
+  authorization: import_zod.z.string()
 });
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {

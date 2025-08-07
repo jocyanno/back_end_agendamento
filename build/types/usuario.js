@@ -23,87 +23,200 @@ __export(usuario_exports, {
   editUsuarioByAdminSchema: () => editUsuarioByAdminSchema,
   editUsuarioSchema: () => editUsuarioSchema,
   requestUsuarioSchema: () => requestUsuarioSchema,
-  responseDoctorSchema: () => responseDoctorSchema,
+  responseProfessionalSchema: () => responseProfessionalSchema,
   responseUsuarioLoginSchema: () => responseUsuarioLoginSchema,
   responseUsuarioSchema: () => responseUsuarioSchema,
-  responseUsuarioSchemaProps: () => responseUsuarioSchemaProps
+  schemaPatientCID: () => schemaPatientCID,
+  schemaPatientCIDUpdate: () => schemaPatientCIDUpdate,
+  schemaRegister: () => schemaRegister,
+  schemaUsuario: () => schemaUsuario,
+  schemaUsuarioCreate: () => schemaUsuarioCreate,
+  schemaUsuarioCreateAdmin: () => schemaUsuarioCreateAdmin,
+  schemaUsuarioCreateByProfessional: () => schemaUsuarioCreateByProfessional,
+  schemaUsuarioUpdate: () => schemaUsuarioUpdate,
+  schemaUsuarioUpdateAdmin: () => schemaUsuarioUpdateAdmin,
+  schemaUsuarioUpdateByProfessional: () => schemaUsuarioUpdateByProfessional
 });
 module.exports = __toCommonJS(usuario_exports);
-var import_v4 = require("zod/v4");
-
-// src/utils/formatDate.ts
-function formatDate(date) {
-  if (!date) return null;
-  const dateObj = typeof date === "string" ? new Date(date) : date;
-  if (isNaN(dateObj.getTime())) return null;
-  return dateObj.toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "America/Sao_Paulo"
-  });
-}
-
-// src/types/usuario.ts
-var schemaRegister = import_v4.z.enum(["patient", "parents", "doctor", "attendant"]);
-var responseUsuarioSchemaProps = {
-  id: import_v4.z.string(),
-  name: import_v4.z.string().nullish(),
-  email: import_v4.z.string().transform((value) => value.toLowerCase()),
-  image: import_v4.z.string().nullish(),
-  birthDate: import_v4.z.coerce.string().or(import_v4.z.date()).transform(formatDate).nullish(),
-  cpf: import_v4.z.string(),
-  phone: import_v4.z.string().nullish(),
-  address: import_v4.z.string().nullish(),
-  numberOfAddress: import_v4.z.string().nullish(),
-  complement: import_v4.z.string().nullish(),
-  city: import_v4.z.string().nullish(),
-  state: import_v4.z.string().nullish(),
-  zipCode: import_v4.z.string().nullish(),
-  country: import_v4.z.string().nullish(),
-  cid: import_v4.z.string().nullish(),
-  register: schemaRegister,
-  createdAt: import_v4.z.coerce.string().or(import_v4.z.date()).transform(formatDate).nullish(),
-  updatedAt: import_v4.z.coerce.string().or(import_v4.z.date()).transform(formatDate).nullish()
-};
-var responseUsuarioSchema = import_v4.z.object(responseUsuarioSchemaProps);
-var requestUsuarioSchema = responseUsuarioSchema.omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true
-}).extend({
-  password: import_v4.z.string().describe("Senha obrigat\xF3ria para cria\xE7\xE3o do usu\xE1rio")
+var import_zod = require("zod");
+var schemaRegister = import_zod.z.enum([
+  "patient",
+  "parents",
+  "professional",
+  "attendant"
+]);
+var schemaUsuario = import_zod.z.object({
+  name: import_zod.z.string().min(1, "Nome \xE9 obrigat\xF3rio"),
+  email: import_zod.z.string().email("Email inv\xE1lido"),
+  password: import_zod.z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  cpf: import_zod.z.string().min(11, "CPF deve ter pelo menos 11 caracteres"),
+  phone: import_zod.z.string().optional(),
+  birthDate: import_zod.z.string().optional(),
+  address: import_zod.z.string().optional(),
+  numberOfAddress: import_zod.z.string().optional(),
+  complement: import_zod.z.string().optional(),
+  city: import_zod.z.string().optional(),
+  state: import_zod.z.string().optional(),
+  zipCode: import_zod.z.string().optional(),
+  country: import_zod.z.string().optional(),
+  image: import_zod.z.string().optional()
 });
-var editUsuarioSchema = requestUsuarioSchema.partial();
-var editUsuarioByAdminSchema = editUsuarioSchema.extend({
-  cid: import_v4.z.string().optional().describe("CID - C\xF3digo Internacional de Doen\xE7as (apenas administradores)")
+var schemaUsuarioUpdate = import_zod.z.object({
+  name: import_zod.z.string().min(1, "Nome \xE9 obrigat\xF3rio").optional(),
+  email: import_zod.z.string().email("Email inv\xE1lido").optional(),
+  phone: import_zod.z.string().optional(),
+  birthDate: import_zod.z.string().optional(),
+  address: import_zod.z.string().optional(),
+  numberOfAddress: import_zod.z.string().optional(),
+  complement: import_zod.z.string().optional(),
+  city: import_zod.z.string().optional(),
+  state: import_zod.z.string().optional(),
+  zipCode: import_zod.z.string().optional(),
+  country: import_zod.z.string().optional(),
+  image: import_zod.z.string().optional()
 });
-var responseUsuarioLoginSchema = import_v4.z.object({
-  token: import_v4.z.string(),
-  usuario: responseUsuarioSchema
+var schemaPatientCID = import_zod.z.object({
+  patientId: import_zod.z.string().min(1, "ID do paciente \xE9 obrigat\xF3rio"),
+  professionalId: import_zod.z.string().min(1, "ID do profissional \xE9 obrigat\xF3rio"),
+  organizationId: import_zod.z.string().min(1, "ID da organiza\xE7\xE3o \xE9 obrigat\xF3rio"),
+  cid: import_zod.z.string().min(1, "CID \xE9 obrigat\xF3rio"),
+  description: import_zod.z.string().optional()
 });
-var responseDoctorSchema = import_v4.z.object({
-  id: import_v4.z.string(),
-  name: import_v4.z.string().nullish(),
-  email: import_v4.z.string().transform((value) => value.toLowerCase()),
-  image: import_v4.z.string().nullish(),
-  phone: import_v4.z.string().nullish(),
-  address: import_v4.z.string().nullish(),
-  city: import_v4.z.string().nullish(),
-  state: import_v4.z.string().nullish(),
-  cid: import_v4.z.string().nullish(),
-  register: schemaRegister,
-  createdAt: import_v4.z.coerce.string().or(import_v4.z.date()).transform(formatDate).nullish()
+var schemaPatientCIDUpdate = import_zod.z.object({
+  cid: import_zod.z.string().min(1, "CID \xE9 obrigat\xF3rio"),
+  description: import_zod.z.string().optional()
 });
+var schemaUsuarioCreate = import_zod.z.object({
+  name: import_zod.z.string().min(1, "Nome \xE9 obrigat\xF3rio"),
+  email: import_zod.z.string().email("Email inv\xE1lido"),
+  password: import_zod.z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  cpf: import_zod.z.string().min(11, "CPF deve ter pelo menos 11 caracteres"),
+  phone: import_zod.z.string().optional(),
+  birthDate: import_zod.z.string().optional(),
+  address: import_zod.z.string().optional(),
+  numberOfAddress: import_zod.z.string().optional(),
+  complement: import_zod.z.string().optional(),
+  city: import_zod.z.string().optional(),
+  state: import_zod.z.string().optional(),
+  zipCode: import_zod.z.string().optional(),
+  country: import_zod.z.string().optional(),
+  image: import_zod.z.string().optional()
+});
+var schemaUsuarioCreateAdmin = import_zod.z.object({
+  name: import_zod.z.string().min(1, "Nome \xE9 obrigat\xF3rio"),
+  email: import_zod.z.string().email("Email inv\xE1lido"),
+  password: import_zod.z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  cpf: import_zod.z.string().min(11, "CPF deve ter pelo menos 11 caracteres"),
+  phone: import_zod.z.string().optional(),
+  birthDate: import_zod.z.string().optional(),
+  address: import_zod.z.string().optional(),
+  numberOfAddress: import_zod.z.string().optional(),
+  complement: import_zod.z.string().optional(),
+  city: import_zod.z.string().optional(),
+  state: import_zod.z.string().optional(),
+  zipCode: import_zod.z.string().optional(),
+  country: import_zod.z.string().optional(),
+  image: import_zod.z.string().optional()
+});
+var schemaUsuarioUpdateAdmin = import_zod.z.object({
+  name: import_zod.z.string().min(1, "Nome \xE9 obrigat\xF3rio").optional(),
+  email: import_zod.z.string().email("Email inv\xE1lido").optional(),
+  password: import_zod.z.string().min(6, "Senha deve ter pelo menos 6 caracteres").optional(),
+  cpf: import_zod.z.string().min(11, "CPF deve ter pelo menos 11 caracteres").optional(),
+  phone: import_zod.z.string().optional(),
+  birthDate: import_zod.z.string().optional(),
+  address: import_zod.z.string().optional(),
+  numberOfAddress: import_zod.z.string().optional(),
+  complement: import_zod.z.string().optional(),
+  city: import_zod.z.string().optional(),
+  state: import_zod.z.string().optional(),
+  zipCode: import_zod.z.string().optional(),
+  country: import_zod.z.string().optional(),
+  image: import_zod.z.string().optional()
+});
+var schemaUsuarioCreateByProfessional = import_zod.z.object({
+  name: import_zod.z.string().min(1, "Nome \xE9 obrigat\xF3rio"),
+  email: import_zod.z.string().email("Email inv\xE1lido"),
+  password: import_zod.z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  cpf: import_zod.z.string().min(11, "CPF deve ter pelo menos 11 caracteres"),
+  phone: import_zod.z.string().optional(),
+  birthDate: import_zod.z.string().optional(),
+  address: import_zod.z.string().optional(),
+  numberOfAddress: import_zod.z.string().optional(),
+  complement: import_zod.z.string().optional(),
+  city: import_zod.z.string().optional(),
+  state: import_zod.z.string().optional(),
+  zipCode: import_zod.z.string().optional(),
+  country: import_zod.z.string().optional(),
+  image: import_zod.z.string().optional()
+});
+var schemaUsuarioUpdateByProfessional = import_zod.z.object({
+  name: import_zod.z.string().min(1, "Nome \xE9 obrigat\xF3rio").optional(),
+  email: import_zod.z.string().email("Email inv\xE1lido").optional(),
+  password: import_zod.z.string().min(6, "Senha deve ter pelo menos 6 caracteres").optional(),
+  cpf: import_zod.z.string().min(11, "CPF deve ter pelo menos 11 caracteres").optional(),
+  phone: import_zod.z.string().optional(),
+  birthDate: import_zod.z.string().optional(),
+  address: import_zod.z.string().optional(),
+  numberOfAddress: import_zod.z.string().optional(),
+  complement: import_zod.z.string().optional(),
+  city: import_zod.z.string().optional(),
+  state: import_zod.z.string().optional(),
+  zipCode: import_zod.z.string().optional(),
+  country: import_zod.z.string().optional(),
+  image: import_zod.z.string().optional()
+});
+var editUsuarioSchema = schemaUsuarioUpdate;
+var editUsuarioByAdminSchema = schemaUsuarioUpdateByProfessional;
+var requestUsuarioSchema = schemaUsuarioCreate;
+var responseProfessionalSchema = import_zod.z.object({
+  id: import_zod.z.string(),
+  name: import_zod.z.string(),
+  email: import_zod.z.string(),
+  cpf: import_zod.z.string(),
+  phone: import_zod.z.string().nullable(),
+  birthDate: import_zod.z.string().nullable(),
+  address: import_zod.z.string().nullable(),
+  numberOfAddress: import_zod.z.string().nullable(),
+  complement: import_zod.z.string().nullable(),
+  city: import_zod.z.string().nullable(),
+  state: import_zod.z.string().nullable(),
+  zipCode: import_zod.z.string().nullable(),
+  country: import_zod.z.string().nullable(),
+  image: import_zod.z.string().nullable(),
+  primaryRole: import_zod.z.string(),
+  primaryOrganizationId: import_zod.z.string().nullable(),
+  organizations: import_zod.z.array(
+    import_zod.z.object({
+      id: import_zod.z.string(),
+      name: import_zod.z.string(),
+      role: import_zod.z.string()
+    })
+  ),
+  createdAt: import_zod.z.string(),
+  updatedAt: import_zod.z.string()
+});
+var responseUsuarioLoginSchema = import_zod.z.object({
+  token: import_zod.z.string(),
+  usuario: responseProfessionalSchema
+});
+var responseUsuarioSchema = responseProfessionalSchema;
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   editUsuarioByAdminSchema,
   editUsuarioSchema,
   requestUsuarioSchema,
-  responseDoctorSchema,
+  responseProfessionalSchema,
   responseUsuarioLoginSchema,
   responseUsuarioSchema,
-  responseUsuarioSchemaProps
+  schemaPatientCID,
+  schemaPatientCIDUpdate,
+  schemaRegister,
+  schemaUsuario,
+  schemaUsuarioCreate,
+  schemaUsuarioCreateAdmin,
+  schemaUsuarioCreateByProfessional,
+  schemaUsuarioUpdate,
+  schemaUsuarioUpdateAdmin,
+  schemaUsuarioUpdateByProfessional
 });

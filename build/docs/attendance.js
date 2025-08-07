@@ -25,7 +25,7 @@ __export(attendance_exports, {
   createAttendanceSchema: () => createAttendanceSchema
 });
 module.exports = __toCommonJS(attendance_exports);
-var import_v42 = require("zod/v4");
+var import_zod2 = require("zod");
 
 // src/_errors/unauthorized.ts
 var Unauthorized = class extends Error {
@@ -47,10 +47,12 @@ async function autenticarToken(request, reply) {
       throw new Unauthorized("Formato de token inv\xE1lido. Use: Bearer <token>");
     }
     await request.jwtVerify();
-    const { userId, register } = request.user;
+    const { userId, primaryRole, primaryOrganizationId, userOrganizations } = request.user;
     request.usuario = {
       id: userId,
-      register
+      primaryRole,
+      primaryOrganizationId,
+      userOrganizations
     };
   } catch (error) {
     if (error instanceof Unauthorized) {
@@ -67,41 +69,41 @@ async function autenticarToken(request, reply) {
 }
 
 // src/utils/scheme.ts
-var import_v4 = require("zod/v4");
-var headersSchema = import_v4.z.object({
-  authorization: import_v4.z.string()
+var import_zod = require("zod");
+var headersSchema = import_zod.z.object({
+  authorization: import_zod.z.string()
 });
 
 // src/docs/attendance.ts
-var errorResponseSchema = import_v42.z.object({
-  status: import_v42.z.literal("error"),
-  message: import_v42.z.string()
+var errorResponseSchema = import_zod2.z.object({
+  status: import_zod2.z.literal("error"),
+  message: import_zod2.z.string()
 });
-var attendanceSchema = import_v42.z.object({
-  id: import_v42.z.string(),
-  patientId: import_v42.z.string(),
-  doctorId: import_v42.z.string(),
-  description: import_v42.z.string(),
-  date: import_v42.z.string(),
-  createdAt: import_v42.z.string(),
-  updatedAt: import_v42.z.string(),
-  patient: import_v42.z.object({
-    id: import_v42.z.string(),
-    name: import_v42.z.string().nullish(),
-    email: import_v42.z.string(),
-    phone: import_v42.z.string().nullish()
+var attendanceSchema = import_zod2.z.object({
+  id: import_zod2.z.string(),
+  patientId: import_zod2.z.string(),
+  doctorId: import_zod2.z.string(),
+  description: import_zod2.z.string(),
+  date: import_zod2.z.string(),
+  createdAt: import_zod2.z.string(),
+  updatedAt: import_zod2.z.string(),
+  patient: import_zod2.z.object({
+    id: import_zod2.z.string(),
+    name: import_zod2.z.string().nullish(),
+    email: import_zod2.z.string(),
+    phone: import_zod2.z.string().nullish()
   }).optional(),
-  doctor: import_v42.z.object({
-    id: import_v42.z.string(),
-    name: import_v42.z.string().nullish(),
-    email: import_v42.z.string(),
-    phone: import_v42.z.string().nullish()
+  doctor: import_zod2.z.object({
+    id: import_zod2.z.string(),
+    name: import_zod2.z.string().nullish(),
+    email: import_zod2.z.string(),
+    phone: import_zod2.z.string().nullish()
   }).optional()
 });
-var createAttendanceSchema = import_v42.z.object({
-  patientId: import_v42.z.string(),
-  description: import_v42.z.string().min(1, "Descri\xE7\xE3o obrigat\xF3ria"),
-  date: import_v42.z.string().optional()
+var createAttendanceSchema = import_zod2.z.object({
+  patientId: import_zod2.z.string(),
+  description: import_zod2.z.string().min(1, "Descri\xE7\xE3o obrigat\xF3ria"),
+  date: import_zod2.z.string().optional()
   // pode ser preenchido automaticamente
 });
 var attendanceDocs = class {
@@ -115,8 +117,8 @@ attendanceDocs.postAttendance = {
     headers: headersSchema,
     body: createAttendanceSchema,
     response: {
-      201: import_v42.z.object({
-        status: import_v42.z.literal("success"),
+      201: import_zod2.z.object({
+        status: import_zod2.z.literal("success"),
         data: attendanceSchema
       }),
       400: errorResponseSchema,
@@ -134,9 +136,9 @@ attendanceDocs.getMyAttendances = {
     description: "Retorna todos os atendimentos realizados para o usu\xE1rio logado.",
     headers: headersSchema,
     response: {
-      200: import_v42.z.object({
-        status: import_v42.z.literal("success"),
-        data: import_v42.z.array(attendanceSchema)
+      200: import_zod2.z.object({
+        status: import_zod2.z.literal("success"),
+        data: import_zod2.z.array(attendanceSchema)
       }),
       401: errorResponseSchema,
       500: errorResponseSchema
@@ -150,13 +152,13 @@ attendanceDocs.getPatientAttendances = {
     summary: "Hist\xF3rico de atendimentos de um paciente",
     description: "Profissional visualiza todos os atendimentos de um paciente espec\xEDfico.",
     headers: headersSchema,
-    params: import_v42.z.object({
-      id: import_v42.z.string().describe("ID do paciente")
+    params: import_zod2.z.object({
+      id: import_zod2.z.string().describe("ID do paciente")
     }),
     response: {
-      200: import_v42.z.object({
-        status: import_v42.z.literal("success"),
-        data: import_v42.z.array(attendanceSchema)
+      200: import_zod2.z.object({
+        status: import_zod2.z.literal("success"),
+        data: import_zod2.z.array(attendanceSchema)
       }),
       401: errorResponseSchema,
       403: errorResponseSchema,

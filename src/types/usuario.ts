@@ -21,7 +21,6 @@ const schemaUsuario = z.object({
   state: z.string().optional(),
   zipCode: z.string().optional(),
   country: z.string().optional(),
-  cid: z.string().optional(),
   image: z.string().optional()
 });
 
@@ -37,8 +36,21 @@ const schemaUsuarioUpdate = z.object({
   state: z.string().optional(),
   zipCode: z.string().optional(),
   country: z.string().optional(),
-  cid: z.string().optional(),
   image: z.string().optional()
+});
+
+// Schema para PatientCID
+const schemaPatientCID = z.object({
+  patientId: z.string().min(1, "ID do paciente é obrigatório"),
+  professionalId: z.string().min(1, "ID do profissional é obrigatório"),
+  organizationId: z.string().min(1, "ID da organização é obrigatório"),
+  cid: z.string().min(1, "CID é obrigatório"),
+  description: z.string().optional()
+});
+
+const schemaPatientCIDUpdate = z.object({
+  cid: z.string().min(1, "CID é obrigatório"),
+  description: z.string().optional()
 });
 
 const schemaUsuarioCreate = z.object({
@@ -55,7 +67,6 @@ const schemaUsuarioCreate = z.object({
   state: z.string().optional(),
   zipCode: z.string().optional(),
   country: z.string().optional(),
-  cid: z.string().optional(),
   image: z.string().optional()
 });
 
@@ -73,7 +84,6 @@ const schemaUsuarioCreateAdmin = z.object({
   state: z.string().optional(),
   zipCode: z.string().optional(),
   country: z.string().optional(),
-  cid: z.string().optional(),
   image: z.string().optional()
 });
 
@@ -94,7 +104,6 @@ const schemaUsuarioUpdateAdmin = z.object({
   state: z.string().optional(),
   zipCode: z.string().optional(),
   country: z.string().optional(),
-  cid: z.string().optional(),
   image: z.string().optional()
 });
 
@@ -112,7 +121,6 @@ const schemaUsuarioCreateByProfessional = z.object({
   state: z.string().optional(),
   zipCode: z.string().optional(),
   country: z.string().optional(),
-  cid: z.string().optional(),
   image: z.string().optional()
 });
 
@@ -133,7 +141,6 @@ const schemaUsuarioUpdateByProfessional = z.object({
   state: z.string().optional(),
   zipCode: z.string().optional(),
   country: z.string().optional(),
-  cid: z.string().optional(),
   image: z.string().optional()
 });
 
@@ -155,11 +162,18 @@ const responseProfessionalSchema = z.object({
   state: z.string().nullable(),
   zipCode: z.string().nullable(),
   country: z.string().nullable(),
-  cid: z.string().nullable(),
   image: z.string().nullable(),
-  register: z.string(),
-  createdAt: z.date(),
-  updatedAt: z.date()
+  primaryRole: z.string(),
+  primaryOrganizationId: z.string().nullable(),
+  organizations: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      role: z.string()
+    })
+  ),
+  createdAt: z.string(),
+  updatedAt: z.string()
 });
 const responseUsuarioLoginSchema = z.object({
   token: z.string(),
@@ -168,8 +182,11 @@ const responseUsuarioLoginSchema = z.object({
 const responseUsuarioSchema = responseProfessionalSchema;
 
 export {
+  schemaRegister,
   schemaUsuario,
   schemaUsuarioUpdate,
+  schemaPatientCID,
+  schemaPatientCIDUpdate,
   schemaUsuarioCreate,
   schemaUsuarioCreateAdmin,
   schemaUsuarioUpdateAdmin,

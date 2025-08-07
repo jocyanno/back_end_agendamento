@@ -4,13 +4,9 @@ import {
   checkSlotAvailability,
   generateAvailableSlots,
   getPatientAppointments,
-  getDoctorAppointments,
   updateAppointmentStatus,
-  createDoctorAvailability,
-  getDoctorAvailability,
-  deleteDoctorAvailability,
   cancelAppointmentByAttendant,
-  canPatientScheduleWithDoctor,
+  canPatientScheduleWithProfessional,
   getAppointmentById
 } from "@/service/appointmentService.service";
 import { BadRequest } from "@/_errors/bad-request";
@@ -297,57 +293,6 @@ describe("appointmentService", () => {
     });
   });
 
-  describe("getDoctorAppointments", () => {
-    it("deve retornar agendamentos do médico", async () => {
-      const mockAppointments = [
-        {
-          id: "appointment-id",
-          patientId: "patient-id",
-          doctorId: "doctor-id",
-          startTime: new Date(),
-          endTime: new Date(),
-          status: "scheduled" as AppointmentStatus
-        }
-      ];
-
-      vi.mocked(prisma.appointment.findMany).mockResolvedValue(
-        mockAppointments as any
-      );
-
-      const result = await getDoctorAppointments("doctor-id");
-
-      // Agora esperamos strings ISO em vez de objetos Date
-      expect(result[0].startTime).toBe("2024-01-01T08:00:00.000Z");
-      expect(result[0].endTime).toBe("2024-01-01T08:00:00.000Z");
-      expect(prisma.appointment.findMany).toHaveBeenCalledWith({
-        where: { doctorId: "doctor-id" },
-        select: expect.any(Object),
-        orderBy: { startTime: "asc" }
-      });
-    });
-
-    it("deve filtrar por data quando fornecido", async () => {
-      vi.mocked(prisma.appointment.findMany).mockResolvedValue([]);
-
-      const startDate = new Date("2024-01-01");
-      const endDate = new Date("2024-01-02");
-
-      await getDoctorAppointments("doctor-id", startDate, endDate);
-
-      expect(prisma.appointment.findMany).toHaveBeenCalledWith({
-        where: {
-          doctorId: "doctor-id",
-          startTime: {
-            gte: startDate,
-            lte: endDate
-          }
-        },
-        select: expect.any(Object),
-        orderBy: { startTime: "asc" }
-      });
-    });
-  });
-
   describe("updateAppointmentStatus", () => {
     it("deve atualizar status do agendamento", async () => {
       const mockAppointment = {
@@ -433,90 +378,6 @@ describe("appointmentService", () => {
           "patient"
         )
       ).rejects.toThrow(BadRequest);
-    });
-  });
-
-  describe("createDoctorAvailability", () => {
-    it("deve criar disponibilidade para médico", async () => {
-      const availabilityData = {
-        dayOfWeek: 1,
-        startTime: "08:00",
-        endTime: "17:00"
-      };
-
-      const mockCreated = {
-        id: "availability-id",
-        doctorId: "doctor-id",
-        ...availabilityData,
-        isActive: true,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
-
-      vi.mocked(prisma.availability.findFirst).mockResolvedValue(null);
-      vi.mocked(prisma.availability.create).mockResolvedValue(mockCreated);
-
-      const result = await createDoctorAvailability(
-        "doctor-id",
-        availabilityData
-      );
-
-      expect(result).toEqual(mockCreated);
-    });
-
-    it("deve lançar erro se já existir disponibilidade conflitante", async () => {
-      const availabilityData = {
-        dayOfWeek: 1,
-        startTime: "08:00",
-        endTime: "17:00"
-      };
-
-      vi.mocked(prisma.availability.findFirst).mockResolvedValue({
-        id: "existing-availability-id",
-        doctorId: "doctor-id",
-        dayOfWeek: 1,
-        startTime: "07:00",
-        endTime: "16:00",
-        isActive: true,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      });
-
-      await expect(
-        createDoctorAvailability("doctor-id", availabilityData)
-      ).rejects.toThrow(BadRequest);
-    });
-  });
-
-  describe("getDoctorAvailability", () => {
-    it("deve retornar disponibilidades do médico", async () => {
-      const mockAvailabilities = [
-        {
-          id: "availability-id",
-          doctorId: "doctor-id",
-          dayOfWeek: 1,
-          startTime: "08:00",
-          endTime: "17:00",
-          isActive: true,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        }
-      ];
-
-      vi.mocked(prisma.availability.findMany).mockResolvedValue(
-        mockAvailabilities
-      );
-
-      const result = await getDoctorAvailability("doctor-id");
-
-      expect(result).toEqual(mockAvailabilities);
-      expect(prisma.availability.findMany).toHaveBeenCalledWith({
-        where: {
-          doctorId: "doctor-id",
-          isActive: true
-        },
-        orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }]
-      });
     });
   });
 

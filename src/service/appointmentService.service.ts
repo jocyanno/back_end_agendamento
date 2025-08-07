@@ -126,7 +126,7 @@ export async function checkSlotAvailability(
   // Verificar se já existe agendamento no horário
   const existingAppointment = await prisma.appointment.findFirst({
     where: {
-      doctorId,
+      professionalId,
       organizationId,
       startTime: {
         lt: localEndTime
@@ -513,13 +513,20 @@ export async function fixAppointmentTimezones() {
 
 // Criar agendamento
 export const createAppointment = async (appointmentData: any) => {
-  const { patientId, doctorId, organizationId, startTime, endTime, notes } =
-    appointmentData;
+  const {
+    patientId,
+    professionalId,
+    organizationId,
+    startTime,
+    endTime,
+    notes
+  } = appointmentData;
 
   // Verificar se é string (corrigir se vier objeto)
   const patientIdString =
     typeof patientId === "string" ? patientId : patientId.id;
-  const doctorIdString = typeof doctorId === "string" ? doctorId : doctorId.id;
+  const professionalIdString =
+    typeof professionalId === "string" ? professionalId : professionalId.id;
   const organizationIdString =
     typeof organizationId === "string" ? organizationId : organizationId.id;
 
@@ -532,13 +539,13 @@ export const createAppointment = async (appointmentData: any) => {
     throw new Error("Paciente não encontrado");
   }
 
-  // Validar se doctor existe
-  const doctor = await prisma.users.findUnique({
-    where: { id: doctorIdString }
+  // Validar se professional existe
+  const professional = await prisma.users.findUnique({
+    where: { id: professionalIdString }
   });
 
-  if (!doctor) {
-    throw new Error("Médico não encontrado");
+  if (!professional) {
+    throw new Error("Profissional não encontrado");
   }
 
   // Validar se organization existe
@@ -552,17 +559,30 @@ export const createAppointment = async (appointmentData: any) => {
 
   // Verificar conflito de horário
   await checkSlotAvailability(
-    doctorIdString,
+    professionalIdString,
     organizationIdString,
     new Date(startTime),
     new Date(endTime)
   );
 
+  // Verificar se o paciente já tem agendamento no mesmo dia com o mesmo profissional
+  const canSchedule = await canPatientScheduleWithProfessional(
+    patientIdString,
+    professionalIdString,
+    new Date(startTime)
+  );
+
+  if (!canSchedule.canSchedule) {
+    throw new BadRequest(
+      canSchedule.reason || "Não é possível agendar este horário"
+    );
+  }
+
   // Criar o agendamento
   const appointment = await prisma.appointment.create({
     data: {
       patientId: patientIdString,
-      doctorId: doctorIdString,
+      professionalId: professionalIdString,
       organizationId: organizationIdString,
       startTime: moment(startTime).add(3, "hours").toDate(),
       endTime: moment(endTime).add(3, "hours").toDate(),
@@ -578,7 +598,7 @@ export const createAppointment = async (appointmentData: any) => {
           phone: true
         }
       },
-      doctor: {
+      professional: {
         select: {
           id: true,
           name: true,
@@ -609,13 +629,20 @@ export const createAppointment = async (appointmentData: any) => {
 
 // Criar agendamento para atendente (sem adicionar 3 horas)
 export const createAppointmentForAttendant = async (appointmentData: any) => {
-  const { patientId, doctorId, organizationId, startTime, endTime, notes } =
-    appointmentData;
+  const {
+    patientId,
+    professionalId,
+    organizationId,
+    startTime,
+    endTime,
+    notes
+  } = appointmentData;
 
   // Verificar se é string (corrigir se vier objeto)
   const patientIdString =
     typeof patientId === "string" ? patientId : patientId.id;
-  const doctorIdString = typeof doctorId === "string" ? doctorId : doctorId.id;
+  const professionalIdString =
+    typeof professionalId === "string" ? professionalId : professionalId.id;
   const organizationIdString =
     typeof organizationId === "string" ? organizationId : organizationId.id;
 
@@ -628,13 +655,13 @@ export const createAppointmentForAttendant = async (appointmentData: any) => {
     throw new Error("Paciente não encontrado");
   }
 
-  // Validar se doctor existe
-  const doctor = await prisma.users.findUnique({
-    where: { id: doctorIdString }
+  // Validar se professional existe
+  const professional = await prisma.users.findUnique({
+    where: { id: professionalIdString }
   });
 
-  if (!doctor) {
-    throw new Error("Médico não encontrado");
+  if (!professional) {
+    throw new Error("Profissional não encontrado");
   }
 
   // Validar se organization existe
@@ -648,17 +675,30 @@ export const createAppointmentForAttendant = async (appointmentData: any) => {
 
   // Verificar conflito de horário (sem adicionar 3 horas)
   await checkSlotAvailabilityForAttendant(
-    doctorIdString,
+    professionalIdString,
     organizationIdString,
     new Date(startTime),
     new Date(endTime)
   );
 
+  // Verificar se o paciente já tem agendamento no mesmo dia com o mesmo profissional
+  const canSchedule = await canPatientScheduleWithProfessional(
+    patientIdString,
+    professionalIdString,
+    new Date(startTime)
+  );
+
+  if (!canSchedule.canSchedule) {
+    throw new BadRequest(
+      canSchedule.reason || "Não é possível agendar este horário"
+    );
+  }
+
   // Criar o agendamento (sem adicionar 3 horas)
   const appointment = await prisma.appointment.create({
     data: {
       patientId: patientIdString,
-      doctorId: doctorIdString,
+      professionalId: professionalIdString,
       organizationId: organizationIdString,
       startTime: moment(startTime).add(3, "hours").toDate(),
       endTime: moment(endTime).add(3, "hours").toDate(),
@@ -674,7 +714,7 @@ export const createAppointmentForAttendant = async (appointmentData: any) => {
           phone: true
         }
       },
-      doctor: {
+      professional: {
         select: {
           id: true,
           name: true,
@@ -728,7 +768,7 @@ export async function checkSlotAvailabilityForAttendant(
 
   const availability = await prisma.availability.findFirst({
     where: {
-      doctorId,
+      professionalId,
       organizationId,
       dayOfWeek,
       isActive: true
@@ -785,7 +825,7 @@ export async function checkSlotAvailabilityForAttendant(
 
   const conflictingAppointment = await prisma.appointment.findFirst({
     where: {
-      doctorId,
+      professionalId,
       organizationId,
       status: {
         notIn: ["cancelled", "no_show"]
@@ -848,14 +888,63 @@ export async function checkSlotAvailabilityForAttendant(
 // Verificar se o paciente pode agendar com um profissional específico
 export const canPatientScheduleWithProfessional = async (
   patientId: string,
-  professionalId: string
+  professionalId: string,
+  requestedDate?: Date
 ): Promise<{
   canSchedule: boolean;
   reason?: string;
   existingAppointment?: any;
 }> => {
   try {
-    // ✅ SEMPRE PERMITE AGENDAMENTO - Restrição removida
+    // Se uma data específica foi fornecida, verificar agendamentos nesse dia
+    if (requestedDate) {
+      const startOfDay = moment(requestedDate).startOf("day").toDate();
+      const endOfDay = moment(requestedDate).endOf("day").toDate();
+
+      const existingAppointment = await prisma.appointment.findFirst({
+        where: {
+          patientId,
+          professionalId,
+          startTime: {
+            gte: startOfDay,
+            lte: endOfDay
+          },
+          status: {
+            in: ["scheduled", "confirmed"]
+          }
+        },
+        include: {
+          patient: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          },
+          professional: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          }
+        }
+      });
+
+      if (existingAppointment) {
+        return {
+          canSchedule: false,
+          reason: `Você já possui um agendamento com ${
+            existingAppointment.professional.name
+          } no dia ${moment(existingAppointment.startTime).format(
+            "DD/MM/YYYY"
+          )} às ${moment(existingAppointment.startTime).format("HH:mm")}`,
+          existingAppointment
+        };
+      }
+    }
+
+    // ✅ PERMITE AGENDAMENTO - Não há conflitos
     return {
       canSchedule: true
     };
@@ -901,7 +990,7 @@ export async function getPatientAppointments(
 
   const appointments = await prisma.appointment.findMany({
     where: whereClause,
-    include: selectAppointmentWithUsers,
+    select: selectAppointmentWithUsers,
     orderBy: { startTime: "desc" }
   });
 
@@ -916,7 +1005,7 @@ export async function getProfessionalAppointments(
   endDate?: Date
 ) {
   const whereClause: any = {
-    doctorId
+    professionalId
   };
 
   if (organizationId) {
@@ -932,7 +1021,7 @@ export async function getProfessionalAppointments(
 
   const appointments = await prisma.appointment.findMany({
     where: whereClause,
-    include: selectAppointmentWithUsers,
+    select: selectAppointmentWithUsers,
     orderBy: { startTime: "asc" }
   });
 
@@ -950,7 +1039,7 @@ export async function updateAppointmentStatus(
     where: { id: appointmentId },
     include: {
       patient: true,
-      doctor: true
+      professional: true
     }
   });
 
@@ -965,7 +1054,7 @@ export async function updateAppointmentStatus(
     );
   }
 
-  if (userRole === "doctor" && appointment.doctorId !== userId) {
+  if (userRole === "professional" && appointment.professionalId !== userId) {
     throw new Unauthorized(
       "Você não tem permissão para alterar este agendamento"
     );
@@ -1084,7 +1173,7 @@ export const getAppointmentById = async (appointmentId: string) => {
             phone: true
           }
         },
-        doctor: {
+        professional: {
           select: {
             id: true,
             name: true,
@@ -1189,7 +1278,7 @@ export async function cancelAppointmentByAttendant(
     where: { id: appointmentId },
     include: {
       patient: true,
-      doctor: true
+      professional: true
     }
   });
 

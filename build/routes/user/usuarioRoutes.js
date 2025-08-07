@@ -34,6 +34,9 @@ __export(usuarioRoutes_exports, {
 });
 module.exports = __toCommonJS(usuarioRoutes_exports);
 
+// src/controllers/usuarioController.ts
+var import_client2 = require("@prisma/client");
+
 // src/lib/prisma.ts
 var import_client = require("@prisma/client");
 var prisma = new import_client.PrismaClient();
@@ -84,11 +87,27 @@ var selectUsuario = {
   state: true,
   zipCode: true,
   country: true,
-  cid: true,
-  register: true,
   createdAt: true,
   updatedAt: true
 };
+function serializeUser(user) {
+  return {
+    ...user,
+    birthDate: user.birthDate ? user.birthDate.toISOString() : null,
+    createdAt: user.createdAt ? user.createdAt.toISOString() : null,
+    updatedAt: user.updatedAt ? user.updatedAt.toISOString() : null
+  };
+}
+function serializeUserOrganizations(userOrganizations) {
+  return userOrganizations.map((uo) => ({
+    organizationId: uo.organization.id,
+    role: uo.role,
+    organizationName: uo.organization.name,
+    joinedAt: uo.joinedAt ? uo.joinedAt.toISOString() : null,
+    createdAt: uo.createdAt ? uo.createdAt.toISOString() : null,
+    updatedAt: uo.updatedAt ? uo.updatedAt.toISOString() : null
+  }));
+}
 async function authenticateUser(email, password, fastify) {
   const user = await prisma.users.findUnique({
     where: { email },
@@ -101,42 +120,139 @@ async function authenticateUser(email, password, fastify) {
     throw new Unauthorized("Invalid credentials");
   }
   const { password: _, ...userWithoutPassword } = user;
+  const userOrganizations = await prisma.userOrganization.findMany({
+    where: { userId: user.id, isActive: true },
+    include: {
+      organization: {
+        select: {
+          id: true,
+          name: true
+        }
+      }
+    },
+    orderBy: { createdAt: "asc" }
+  });
+  let primaryRole = "member";
+  let primaryOrganizationId = null;
+  if (userOrganizations.length > 0) {
+    const rolePriority = {
+      owner: 6,
+      admin: 5,
+      professional: 4,
+      attendant: 3,
+      patient: 2,
+      member: 1
+    };
+    let highestPriority = 0;
+    for (const userOrg of userOrganizations) {
+      const priority = rolePriority[userOrg.role] || 0;
+      if (priority > highestPriority) {
+        highestPriority = priority;
+        primaryRole = userOrg.role;
+        primaryOrganizationId = userOrg.organization.id;
+      }
+    }
+  }
   const token = await fastify.jwt.sign(
-    { userId: user.id, register: user.register },
+    {
+      userId: user.id,
+      primaryRole,
+      primaryOrganizationId,
+      userOrganizations: serializeUserOrganizations(userOrganizations)
+    },
     { expiresIn: "7d" }
   );
   return {
     token,
-    usuario: userWithoutPassword
+    usuario: {
+      ...serializeUser(userWithoutPassword),
+      primaryRole,
+      primaryOrganizationId,
+      organizations: userOrganizations.map((uo) => ({
+        id: uo.organization.id,
+        name: uo.organization.name,
+        role: uo.role
+      }))
+    }
   };
 }
 async function searchUsuario(usuarioId) {
-  const searchUserExisting = await prisma.users.findUnique({
+  const user = await prisma.users.findUnique({
     where: {
       id: usuarioId
     },
-    select: selectUsuario
+    include: {
+      userOrganizations: {
+        where: { isActive: true },
+        include: {
+          organization: {
+            select: {
+              id: true,
+              name: true
+            }
+          }
+        },
+        orderBy: { createdAt: "asc" }
+      }
+    }
   });
-  if (!searchUserExisting) {
+  if (!user) {
     throw new NotFound("User not found");
   }
-  return searchUserExisting;
+  let primaryRole = "member";
+  let primaryOrganizationId = null;
+  const organizations = [];
+  if (user.userOrganizations.length > 0) {
+    const rolePriority = {
+      owner: 6,
+      admin: 5,
+      professional: 4,
+      attendant: 3,
+      patient: 2,
+      member: 1
+    };
+    let highestPriority = 0;
+    for (const userOrg of user.userOrganizations) {
+      const priority = rolePriority[userOrg.role] || 0;
+      if (priority > highestPriority) {
+        highestPriority = priority;
+        primaryRole = userOrg.role;
+        primaryOrganizationId = userOrg.organizationId;
+      }
+      organizations.push({
+        organizationId: userOrg.organizationId,
+        role: userOrg.role,
+        organizationName: userOrg.organization.name,
+        joinedAt: userOrg.joinedAt ? userOrg.joinedAt.toISOString() : null,
+        createdAt: userOrg.createdAt ? userOrg.createdAt.toISOString() : null,
+        updatedAt: userOrg.updatedAt ? userOrg.updatedAt.toISOString() : null
+      });
+    }
+  }
+  return {
+    ...serializeUser(user),
+    primaryRole,
+    primaryOrganizationId,
+    organizations
+  };
 }
 var getUsuarioLogado = async (request) => {
   const usuarioId = request.usuario.id;
   return searchUsuario(usuarioId);
 };
 var getUsuarioLogadoIsAdmin = async (request) => {
-  const { id: usuarioId, register } = request.usuario;
-  if (register !== "doctor") {
-    throw new Unauthorized("User is not doctor");
+  const { id: usuarioId, primaryRole } = request.usuario;
+  const allowedRoles = ["professional", "admin", "owner"];
+  if (!allowedRoles.includes(primaryRole)) {
+    throw new Unauthorized("User is not authorized");
   }
   return searchUsuario(usuarioId);
 };
 var getUsuarioLogadoIsAdminOrAttendant = async (request) => {
-  const { id: usuarioId, register } = request.usuario;
-  if (register !== "doctor" && register !== "attendant") {
-    throw new Unauthorized("User is not doctor");
+  const { id: usuarioId, primaryRole } = request.usuario;
+  const allowedRoles = ["professional", "admin", "owner", "attendant"];
+  if (!allowedRoles.includes(primaryRole)) {
+    throw new Unauthorized("User is not authorized");
   }
   return searchUsuario(usuarioId);
 };
@@ -150,41 +266,41 @@ async function getUserById(usuarioId) {
   if (!user) {
     throw new NotFound("User not found");
   }
-  return user;
+  return serializeUser(user);
 }
 async function getUserExisting({
   email,
   cpf
 }) {
-  let user = null;
+  console.log("=== VALIDANDO EMAIL E CPF ===");
+  console.log("Email:", email);
+  console.log("CPF:", cpf);
   if (email) {
-    user = await prisma.users.findUnique({
-      where: {
-        email
-      },
-      select: selectUsuario
+    const existingUserByEmail = await prisma.users.findUnique({
+      where: { email },
+      select: { id: true, email: true }
     });
-    if (user) {
-      throw new BadRequest("User already exists");
+    if (existingUserByEmail) {
+      console.log("Email j\xE1 existe:", email);
+      throw new BadRequest(`Email ${email} j\xE1 est\xE1 em uso`);
     }
   }
   if (cpf) {
-    user = await prisma.users.findUnique({
-      where: {
-        cpf
-      },
-      select: selectUsuario
+    const existingUserByCpf = await prisma.users.findUnique({
+      where: { cpf },
+      select: { id: true, cpf: true }
     });
-    if (user) {
-      throw new BadRequest("User already exists");
+    if (existingUserByCpf) {
+      console.log("CPF j\xE1 existe:", cpf);
+      throw new BadRequest(`CPF ${cpf} j\xE1 est\xE1 em uso`);
     }
   }
+  console.log("Email e CPF dispon\xEDveis para uso");
   return;
 }
 async function createUser(data) {
-  if (data.register === "doctor") {
-    throw new BadRequest("Register doctor is not allowed");
-  }
+  console.log("=== CREATE USER ===");
+  console.log("Dados recebidos:", JSON.stringify(data, null, 2));
   if (!data.password) {
     throw new BadRequest("Password is required");
   }
@@ -197,9 +313,17 @@ async function createUser(data) {
     },
     select: selectUsuario
   });
-  return user;
+  console.log("Usu\xE1rio criado com sucesso:", user.email);
+  return {
+    ...serializeUser(user),
+    primaryRole: "member",
+    primaryOrganizationId: null,
+    organizations: []
+  };
 }
 async function createUserAdmin(data) {
+  console.log("=== CREATE USER ADMIN ===");
+  console.log("Dados recebidos:", JSON.stringify(data, null, 2));
   if (!data.password) {
     throw new BadRequest("Password is required");
   }
@@ -212,54 +336,109 @@ async function createUserAdmin(data) {
     },
     select: selectUsuario
   });
-  return user;
+  console.log("Usu\xE1rio criado com sucesso:", user.email);
+  return {
+    ...serializeUser(user),
+    primaryRole: "member",
+    primaryOrganizationId: null,
+    organizations: []
+  };
 }
 async function updateUser(usuarioId, data) {
-  const { cid, ...allowedData } = data;
-  const searchUser = await prisma.users.findUnique({
-    where: {
-      id: usuarioId
-    },
-    select: selectUsuario
-  });
-  if (!searchUser) {
-    throw new NotFound("User not found");
-  }
-  if (allowedData.email && allowedData.email !== searchUser.email) {
-    if (typeof allowedData.email === "string") {
-      const existingUser = await prisma.users.findUnique({
-        where: { email: allowedData.email },
-        select: { id: true }
-      });
-      if (existingUser && existingUser.id !== usuarioId) {
-        throw new BadRequest("User already exists");
-      }
-    }
-  }
-  if (allowedData.cpf && allowedData.cpf !== searchUser.cpf) {
-    if (typeof allowedData.cpf === "string") {
-      const existingUser = await prisma.users.findUnique({
-        where: { cpf: allowedData.cpf },
-        select: { id: true }
-      });
-      if (existingUser && existingUser.id !== usuarioId) {
-        throw new BadRequest("User already exists");
-      }
-    }
-  }
-  if (allowedData.password) {
-    allowedData.password = await import_bcrypt.default.hash(
-      allowedData.password,
-      10
-    );
-  }
-  if (allowedData.birthDate && typeof allowedData.birthDate === "string") {
-    allowedData.birthDate = new Date(allowedData.birthDate);
-  }
-  const dadosLimpos = Object.fromEntries(
-    Object.entries(allowedData).filter(([_, value]) => value !== null)
-  );
   try {
+    console.log("=== UPDATE USER SERVICE ===");
+    console.log("UsuarioId:", usuarioId);
+    console.log("Dados recebidos:", JSON.stringify(data, null, 2));
+    const allowedData = data;
+    const searchUser = await prisma.users.findUnique({
+      where: {
+        id: usuarioId
+      },
+      select: selectUsuario
+    });
+    console.log("Usu\xE1rio encontrado:", searchUser ? "Sim" : "N\xE3o");
+    if (!searchUser) {
+      throw new NotFound("User not found");
+    }
+    if (allowedData.email && allowedData.email !== searchUser.email) {
+      if (typeof allowedData.email === "string") {
+        const existingUser = await prisma.users.findUnique({
+          where: { email: allowedData.email },
+          select: { id: true }
+        });
+        if (existingUser && existingUser.id !== usuarioId) {
+          throw new BadRequest("User already exists");
+        }
+      }
+    }
+    if (allowedData.cpf && allowedData.cpf !== searchUser.cpf) {
+      if (typeof allowedData.cpf === "string") {
+        const existingUser = await prisma.users.findUnique({
+          where: { cpf: allowedData.cpf },
+          select: { id: true }
+        });
+        if (existingUser && existingUser.id !== usuarioId) {
+          throw new BadRequest("User already exists");
+        }
+      }
+    }
+    if (allowedData.password) {
+      console.log("Criptografando senha...");
+      allowedData.password = await import_bcrypt.default.hash(
+        allowedData.password,
+        10
+      );
+    }
+    if (allowedData.birthDate && typeof allowedData.birthDate === "string") {
+      console.log("Convertendo birthDate para Date...");
+      allowedData.birthDate = new Date(allowedData.birthDate);
+    }
+    const dadosLimpos = Object.fromEntries(
+      Object.entries(allowedData).filter(
+        ([_, value]) => value !== null && value !== void 0
+      )
+    );
+    console.log(
+      "Dados limpos para atualiza\xE7\xE3o:",
+      JSON.stringify(dadosLimpos, null, 2)
+    );
+    if (dadosLimpos.numberOfAddress === "" || dadosLimpos.numberOfAddress === null) {
+      console.log("Removendo numberOfAddress vazio...");
+      delete dadosLimpos.numberOfAddress;
+    }
+    const camposEndereco = [
+      "address",
+      "city",
+      "state",
+      "zipCode",
+      "country",
+      "complement"
+    ];
+    camposEndereco.forEach((campo) => {
+      if (dadosLimpos[campo] === "" || dadosLimpos[campo] === null) {
+        console.log(`Removendo ${campo} vazio...`);
+        delete dadosLimpos[campo];
+      }
+    });
+    const camposProblema = Object.entries(dadosLimpos).filter(
+      ([key, value]) => {
+        if (value === "" || value === "null" || value === "undefined") {
+          console.log(`Campo problem\xE1tico encontrado: ${key} = ${value}`);
+          return true;
+        }
+        return false;
+      }
+    );
+    if (camposProblema.length > 0) {
+      console.log("Removendo campos com valores vazios ou inv\xE1lidos...");
+      camposProblema.forEach(([key, value]) => {
+        delete dadosLimpos[key];
+      });
+    }
+    console.log(
+      "Dados finais para atualiza\xE7\xE3o:",
+      JSON.stringify(dadosLimpos, null, 2)
+    );
     const usuarioAtualizado = await prisma.users.update({
       where: { id: usuarioId },
       data: {
@@ -267,8 +446,55 @@ async function updateUser(usuarioId, data) {
       },
       select: selectUsuario
     });
-    return usuarioAtualizado;
+    console.log("Usu\xE1rio atualizado com sucesso no banco");
+    const userOrganizations = await prisma.userOrganization.findMany({
+      where: { userId: usuarioId, isActive: true },
+      include: {
+        organization: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
+      },
+      orderBy: { createdAt: "asc" }
+    });
+    let primaryRole = "member";
+    let primaryOrganizationId = null;
+    if (userOrganizations.length > 0) {
+      const rolePriority = {
+        owner: 6,
+        admin: 5,
+        professional: 4,
+        attendant: 3,
+        patient: 2,
+        member: 1
+      };
+      let highestPriority = 0;
+      for (const userOrg of userOrganizations) {
+        const priority = rolePriority[userOrg.role] || 0;
+        if (priority > highestPriority) {
+          highestPriority = priority;
+          primaryRole = userOrg.role;
+          primaryOrganizationId = userOrg.organizationId;
+        }
+      }
+    }
+    const organizations = userOrganizations.map((uo) => ({
+      id: uo.organization.id,
+      name: uo.organization.name,
+      role: uo.role
+    }));
+    return {
+      ...serializeUser(usuarioAtualizado),
+      primaryRole,
+      primaryOrganizationId,
+      organizations
+    };
   } catch (err) {
+    console.error("Erro na fun\xE7\xE3o updateUser:", err);
+    console.error("C\xF3digo do erro:", err.code);
+    console.error("Mensagem do erro:", err.message);
     if (err.code === "P2002") {
       throw new BadRequest("User already exists");
     }
@@ -276,45 +502,65 @@ async function updateUser(usuarioId, data) {
   }
 }
 async function getAllUsers() {
-  const users = await prisma.users.findMany({
-    where: {
-      OR: [
-        { register: "patient" },
-        { register: "parents" }
-      ]
-    },
-    select: selectUsuario,
-    orderBy: [
-      { name: "asc" }
-    ]
-  });
-  return users;
+  try {
+    const users = await prisma.users.findMany({
+      select: selectUsuario,
+      orderBy: [{ name: "asc" }]
+    });
+    const usersWithOrganizations = await Promise.all(
+      users.map(async (user) => {
+        const userOrganizations = await prisma.userOrganization.findMany({
+          where: { userId: user.id, isActive: true },
+          include: {
+            organization: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
+          },
+          orderBy: { createdAt: "asc" }
+        });
+        let primaryRole = "member";
+        let primaryOrganizationId = null;
+        if (userOrganizations.length > 0) {
+          const rolePriority = {
+            owner: 6,
+            admin: 5,
+            professional: 4,
+            attendant: 3,
+            patient: 2,
+            member: 1
+          };
+          let highestPriority = 0;
+          for (const userOrg of userOrganizations) {
+            const priority = rolePriority[userOrg.role] || 0;
+            if (priority > highestPriority) {
+              highestPriority = priority;
+              primaryRole = userOrg.role;
+              primaryOrganizationId = userOrg.organization.id;
+            }
+          }
+        }
+        return {
+          ...serializeUser(user),
+          primaryRole,
+          primaryOrganizationId,
+          organizations: userOrganizations.map((uo) => ({
+            id: uo.organization.id,
+            name: uo.organization.name,
+            role: uo.role
+          }))
+        };
+      })
+    );
+    return usersWithOrganizations;
+  } catch (error) {
+    console.error("Erro em getAllUsers:", error);
+    throw error;
+  }
 }
-async function getAllDoctors() {
-  const doctors = await prisma.users.findMany({
-    where: {
-      register: "doctor"
-    },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      image: true,
-      phone: true,
-      address: true,
-      city: true,
-      state: true,
-      cid: true,
-      register: true,
-      createdAt: true
-    },
-    orderBy: {
-      name: "asc"
-    }
-  });
-  return doctors;
-}
-async function updateUserByDoctor(targetUserId, data) {
+async function updateUserByProfessional(targetUserId, data) {
   const searchUser = await prisma.users.findUnique({
     where: {
       id: targetUserId
@@ -363,7 +609,7 @@ async function updateUserByDoctor(targetUserId, data) {
       },
       select: selectUsuario
     });
-    return usuarioAtualizado;
+    return serializeUser(usuarioAtualizado);
   } catch (err) {
     if (err.code === "P2002") {
       throw new BadRequest("User already exists");
@@ -391,8 +637,215 @@ async function deleteUser(usuarioId, adminId) {
   });
   return { message: "User deleted successfully" };
 }
+async function addUserToOrganization(userId, organizationId, role) {
+  const user = await prisma.users.findUnique({
+    where: { id: userId },
+    select: { id: true }
+  });
+  if (!user) {
+    throw new NotFound("User not found");
+  }
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { id: true }
+  });
+  if (!organization) {
+    throw new NotFound("Organization not found");
+  }
+  const existingAssociation = await prisma.userOrganization.findFirst({
+    where: {
+      userId,
+      organizationId,
+      isActive: true
+    }
+  });
+  if (existingAssociation) {
+    throw new BadRequest("User is already associated with this organization");
+  }
+  const userOrganization = await prisma.userOrganization.create({
+    data: {
+      userId,
+      organizationId,
+      role,
+      isActive: true
+    },
+    include: {
+      organization: {
+        select: {
+          id: true,
+          name: true
+        }
+      }
+    }
+  });
+  return userOrganization;
+}
+async function getUsersFromCurrentOrganization(organizationId) {
+  try {
+    const users = await prisma.users.findMany({
+      where: {
+        userOrganizations: {
+          some: {
+            organizationId,
+            isActive: true
+          }
+        }
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        cpf: true,
+        phone: true,
+        birthDate: true,
+        address: true,
+        numberOfAddress: true,
+        complement: true,
+        city: true,
+        state: true,
+        zipCode: true,
+        country: true,
+        createdAt: true,
+        updatedAt: true,
+        userOrganizations: {
+          where: {
+            organizationId,
+            isActive: true
+          },
+          select: {
+            role: true,
+            joinedAt: true,
+            isActive: true
+          }
+        }
+      }
+    });
+    return users.map((user) => {
+      const userOrg = user.userOrganizations[0];
+      return {
+        ...user,
+        primaryRole: userOrg?.role || null,
+        primaryOrganizationId: organizationId,
+        organizations: userOrg ? [
+          {
+            id: organizationId,
+            role: userOrg.role,
+            joinedAt: userOrg.joinedAt,
+            isActive: userOrg.isActive
+          }
+        ] : []
+      };
+    });
+  } catch (error) {
+    console.error("Erro em getUsersFromCurrentOrganization:", error);
+    throw error;
+  }
+}
+async function removeUserFromOrganization(userId, organizationId) {
+  const user = await prisma.users.findUnique({
+    where: { id: userId },
+    select: { id: true }
+  });
+  if (!user) {
+    throw new NotFound("User not found");
+  }
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { id: true }
+  });
+  if (!organization) {
+    throw new NotFound("Organization not found");
+  }
+  const existingAssociation = await prisma.userOrganization.findFirst({
+    where: {
+      userId,
+      organizationId,
+      isActive: true
+    }
+  });
+  if (!existingAssociation) {
+    throw new BadRequest("User is not associated with this organization");
+  }
+  const userOrganization = await prisma.userOrganization.update({
+    where: {
+      id: existingAssociation.id
+    },
+    data: {
+      isActive: false
+    },
+    include: {
+      organization: {
+        select: {
+          id: true,
+          name: true
+        }
+      }
+    }
+  });
+  return userOrganization;
+}
+async function getAllUsersFromSystem() {
+  try {
+    const users = await prisma.users.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        cpf: true,
+        phone: true,
+        birthDate: true,
+        address: true,
+        numberOfAddress: true,
+        complement: true,
+        city: true,
+        state: true,
+        zipCode: true,
+        country: true,
+        createdAt: true,
+        updatedAt: true,
+        userOrganizations: {
+          where: {
+            isActive: true
+          },
+          select: {
+            role: true,
+            organizationId: true,
+            joinedAt: true,
+            organization: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: {
+        createdAt: "desc"
+      }
+    });
+    return users.map((user) => {
+      const primaryOrg = user.userOrganizations[0];
+      return {
+        ...user,
+        primaryRole: primaryOrg?.role || null,
+        primaryOrganizationId: primaryOrg?.organizationId || null,
+        organizations: user.userOrganizations.map((org) => ({
+          id: org.organizationId,
+          name: org.organization.name,
+          role: org.role,
+          joinedAt: org.joinedAt
+        }))
+      };
+    });
+  } catch (error) {
+    console.error("Erro em getAllUsersFromSystem:", error);
+    throw error;
+  }
+}
 
 // src/controllers/usuarioController.ts
+var prisma2 = new import_client2.PrismaClient();
 async function getUsuario(request, reply) {
   const usuario = await getUsuarioLogado(request);
   return reply.status(200).send({
@@ -436,13 +889,15 @@ async function createUsuario(request, reply) {
     console.log("Body:", request.body);
     const parseResult = request.body;
     console.log("Dados recebidos:", JSON.stringify(parseResult, null, 2));
+    console.log("userType recebido:", parseResult.userType);
+    console.log("organizationId recebido:", parseResult.organizationId);
     await getUserExisting({
       email: parseResult.email,
       cpf: parseResult.cpf
     });
     const createUsuario2 = await createUser(parseResult);
     const token = request.server.jwt.sign(
-      { userId: createUsuario2.id, register: createUsuario2.register },
+      { userId: createUsuario2.id },
       { expiresIn: "7d" }
     );
     console.log("Usu\xE1rio criado com sucesso:", createUsuario2.email);
@@ -459,46 +914,148 @@ async function createUsuario(request, reply) {
   }
 }
 async function createUsuarioAdmin(request, reply) {
-  const admin = await getUsuarioLogadoIsAdmin(request);
-  const parseResult = request.body;
-  console.log("Dados recebidos:", JSON.stringify(parseResult, null, 2));
-  await getUserExisting({
-    email: parseResult.email,
-    cpf: parseResult.cpf
-  });
-  const createUsuario2 = await createUserAdmin(parseResult);
-  const token = request.server.jwt.sign(
-    { userId: createUsuario2.id, register: createUsuario2.register },
-    { expiresIn: "7d" }
-  );
-  return reply.status(200).send({
-    status: "success",
-    data: { token, usuario: createUsuario2 }
-  });
+  try {
+    console.log("=== CREATE USER ADMIN ATTEMPT ===");
+    console.log("Headers:", request.headers);
+    console.log("Body:", request.body);
+    const admin = await getUsuarioLogadoIsAdmin(request);
+    console.log("Admin logado:", admin.id);
+    console.log("Admin primaryOrganizationId:", admin.primaryOrganizationId);
+    console.log("Admin primaryRole:", admin.primaryRole);
+    console.log("Admin organizations:", admin.organizations);
+    const parseResult = request.body;
+    console.log("Dados recebidos:", JSON.stringify(parseResult, null, 2));
+    console.log("userType recebido:", parseResult.userType);
+    console.log("organizationId recebido:", parseResult.organizationId);
+    console.log("Validando email e CPF...");
+    await getUserExisting({
+      email: parseResult.email,
+      cpf: parseResult.cpf
+    });
+    console.log("Email e CPF v\xE1lidos");
+    const createUsuario2 = await createUserAdmin(parseResult);
+    console.log("Usu\xE1rio criado:", createUsuario2.id);
+    let targetOrganizationId = parseResult.organizationId;
+    let userRole = parseResult.userType || "patient";
+    if (!targetOrganizationId) {
+      targetOrganizationId = admin.primaryOrganizationId;
+      console.log(
+        "Usando organiza\xE7\xE3o prim\xE1ria do admin:",
+        targetOrganizationId
+      );
+    }
+    if (!targetOrganizationId) {
+      console.log("Nenhuma organiza\xE7\xE3o dispon\xEDvel para vincular o usu\xE1rio");
+      console.log("Admin n\xE3o tem organiza\xE7\xE3o prim\xE1ria definida");
+    } else {
+      console.log("Adicionando usu\xE1rio \xE0 organiza\xE7\xE3o:", targetOrganizationId);
+      let role;
+      switch (userRole) {
+        case "patient":
+          role = "patient";
+          break;
+        case "professional":
+          role = "professional";
+          break;
+        case "parent":
+          role = "patient";
+          break;
+        default:
+          role = "patient";
+      }
+      console.log("Role determinado:", role);
+      await prisma2.userOrganization.create({
+        data: {
+          userId: createUsuario2.id,
+          organizationId: targetOrganizationId,
+          role
+        }
+      });
+      console.log("Usu\xE1rio adicionado \xE0 organiza\xE7\xE3o com sucesso");
+    }
+    const token = request.server.jwt.sign(
+      { userId: createUsuario2.id },
+      { expiresIn: "7d" }
+    );
+    console.log("Token gerado com sucesso");
+    return reply.status(200).send({
+      status: "success",
+      data: { token, usuario: createUsuario2 }
+    });
+  } catch (error) {
+    console.error("Erro em createUsuarioAdmin:", error);
+    if (error instanceof Error) {
+      return reply.status(400).send({
+        status: "error",
+        message: error.message
+      });
+    }
+    return reply.status(500).send({
+      status: "error",
+      message: "Internal server error"
+    });
+  }
 }
 async function updateUsuario(request, reply) {
-  const usuario = await getUsuarioLogado(request);
-  const parseResult = request.body;
-  const updateUsuario2 = await updateUser(usuario.id, parseResult);
-  return reply.code(200).send({
-    status: "success",
-    data: updateUsuario2
-  });
+  try {
+    console.log("=== UPDATE USER ATTEMPT ===");
+    console.log("Headers:", request.headers);
+    console.log("Body:", request.body);
+    const usuario = await getUsuarioLogado(request);
+    console.log("Usu\xE1rio logado:", usuario.id);
+    const parseResult = request.body;
+    console.log(
+      "Dados para atualiza\xE7\xE3o:",
+      JSON.stringify(parseResult, null, 2)
+    );
+    const updateUsuario2 = await updateUser(usuario.id, parseResult);
+    console.log("Usu\xE1rio atualizado com sucesso");
+    return reply.code(200).send({
+      status: "success",
+      data: updateUsuario2
+    });
+  } catch (error) {
+    console.error("Erro ao atualizar usu\xE1rio:", error);
+    if (error instanceof Error) {
+      return reply.status(500).send({
+        status: "error",
+        message: error.message
+      });
+    }
+    return reply.status(500).send({
+      status: "error",
+      message: "Internal server error"
+    });
+  }
 }
-async function getDoctors(request, reply) {
-  const doctors = await getAllDoctors();
+async function getProfessionals(request, reply) {
+  const professionals = await getAllProfessionals();
   return reply.status(200).send({
     status: "success",
-    data: doctors
+    data: professionals
   });
 }
 async function getAllUsuarios(request, reply) {
-  await getUsuarioLogadoIsAdminOrAttendant(request);
-  const users = await getAllUsers();
-  return reply.status(200).send({
-    status: "success",
-    data: users
-  });
+  try {
+    await getUsuarioLogadoIsAdminOrAttendant(request);
+    const users = await getAllUsers();
+    return reply.status(200).send({
+      status: "success",
+      data: users
+    });
+  } catch (error) {
+    console.error("Erro em getAllUsuarios:", error);
+    if (error instanceof Error) {
+      return reply.status(500).send({
+        status: "error",
+        message: error.message
+      });
+    }
+    return reply.status(500).send({
+      status: "error",
+      message: "Internal server error"
+    });
+  }
 }
 async function getUsuarioById(request, reply) {
   await getUsuarioLogadoIsAdmin(request);
@@ -513,7 +1070,7 @@ async function updateUsuarioByDoctor(request, reply) {
   await getUsuarioLogadoIsAdmin(request);
   const { id } = request.params;
   const parseResult = request.body;
-  const updateUsuario2 = await updateUserByDoctor(id, parseResult);
+  const updateUsuario2 = await updateUserByProfessional(id, parseResult);
   return reply.status(200).send({
     status: "success",
     data: updateUsuario2
@@ -528,9 +1085,274 @@ async function deleteUsuario(request, reply) {
     data: result
   });
 }
+async function addUserToOrganizationController(request, reply) {
+  try {
+    await getUsuarioLogadoIsAdmin(request);
+    const { userId, organizationId, role } = request.body;
+    let finalRole;
+    switch (role) {
+      case "patient":
+        finalRole = "patient";
+        break;
+      case "professional":
+        finalRole = "professional";
+        break;
+      case "parent":
+        finalRole = "patient";
+        break;
+      default:
+        finalRole = "patient";
+    }
+    const userOrganization = await addUserToOrganization(
+      userId,
+      organizationId,
+      finalRole
+    );
+    return reply.status(200).send({
+      status: "success",
+      data: userOrganization
+    });
+  } catch (error) {
+    console.error("Erro ao adicionar usu\xE1rio \xE0 organiza\xE7\xE3o:", error);
+    if (error instanceof Error) {
+      return reply.status(400).send({
+        status: "error",
+        message: error.message
+      });
+    }
+    return reply.status(500).send({
+      status: "error",
+      message: "Internal server error"
+    });
+  }
+}
+async function getUserOrganizationsController(request, reply) {
+  try {
+    const loggedUser = await getUsuarioLogado(request);
+    const { userId } = request.params;
+    if (loggedUser.id !== userId) {
+      return reply.status(403).send({
+        status: "error",
+        message: "Acesso negado. Voc\xEA s\xF3 pode ver suas pr\xF3prias organiza\xE7\xF5es."
+      });
+    }
+    const userOrganizations = await prisma2.userOrganization.findMany({
+      where: {
+        userId,
+        isActive: true
+      },
+      include: {
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            description: true
+          }
+        }
+      },
+      orderBy: { createdAt: "asc" }
+    });
+    const formattedOrganizations = userOrganizations.map((uo) => ({
+      id: uo.id,
+      userId: uo.userId,
+      organizationId: uo.organizationId,
+      role: uo.role,
+      isActive: uo.isActive,
+      joinedAt: uo.joinedAt.toISOString(),
+      createdAt: uo.createdAt.toISOString(),
+      updatedAt: uo.updatedAt.toISOString(),
+      organization: {
+        id: uo.organization.id,
+        name: uo.organization.name,
+        description: uo.organization.description
+      }
+    }));
+    return reply.status(200).send({
+      status: "success",
+      data: formattedOrganizations
+    });
+  } catch (error) {
+    console.error("Erro em getUserOrganizationsController:", error);
+    if (error instanceof Error) {
+      return reply.status(400).send({
+        status: "error",
+        message: error.message
+      });
+    }
+    return reply.status(500).send({
+      status: "error",
+      message: "Internal server error"
+    });
+  }
+}
+async function getUsersFromCurrentOrganizationController(request, reply) {
+  try {
+    await getUsuarioLogadoIsAdmin(request);
+    const user = await getUsuarioLogado(request);
+    const userOrganization = await prisma2.userOrganization.findFirst({
+      where: {
+        userId: user.id,
+        isActive: true
+      },
+      select: {
+        organizationId: true
+      }
+    });
+    if (!userOrganization?.organizationId) {
+      return reply.status(400).send({
+        status: "error",
+        message: "Usu\xE1rio n\xE3o est\xE1 associado a nenhuma organiza\xE7\xE3o"
+      });
+    }
+    const users = await getUsersFromCurrentOrganization(
+      userOrganization.organizationId
+    );
+    return reply.status(200).send({
+      status: "success",
+      data: users
+    });
+  } catch (error) {
+    console.error("Erro em getUsersFromCurrentOrganizationController:", error);
+    if (error instanceof Error) {
+      return reply.status(400).send({
+        status: "error",
+        message: error.message
+      });
+    }
+    return reply.status(500).send({
+      status: "error",
+      message: "Internal server error"
+    });
+  }
+}
+async function removeUserFromOrganizationController(request, reply) {
+  try {
+    await getUsuarioLogadoIsAdmin(request);
+    const { userId } = request.params;
+    const user = await getUsuarioLogado(request);
+    const userOrganization = await prisma2.userOrganization.findFirst({
+      where: {
+        userId: user.id,
+        isActive: true
+      },
+      select: {
+        organizationId: true
+      }
+    });
+    if (!userOrganization?.organizationId) {
+      return reply.status(400).send({
+        status: "error",
+        message: "Usu\xE1rio n\xE3o est\xE1 associado a nenhuma organiza\xE7\xE3o"
+      });
+    }
+    const userOrganizationResult = await removeUserFromOrganization(
+      userId,
+      userOrganization.organizationId
+    );
+    return reply.status(200).send({
+      status: "success",
+      data: userOrganizationResult
+    });
+  } catch (error) {
+    console.error("Erro em removeUserFromOrganizationController:", error);
+    if (error instanceof Error) {
+      return reply.status(400).send({
+        status: "error",
+        message: error.message
+      });
+    }
+    return reply.status(500).send({
+      status: "error",
+      message: "Internal server error"
+    });
+  }
+}
+async function getAllUsersFromSystemController(request, reply) {
+  try {
+    const user = await getUsuarioLogado(request);
+    const allowedRoles = ["owner", "admin", "member"];
+    if (!user.primaryRole || !allowedRoles.includes(user.primaryRole)) {
+      return reply.status(403).send({
+        status: "error",
+        message: "Acesso negado. Apenas propriet\xE1rios, administradores e membros podem visualizar todos os usu\xE1rios."
+      });
+    }
+    const users = await getAllUsersFromSystem();
+    return reply.status(200).send({
+      status: "success",
+      data: users
+    });
+  } catch (error) {
+    console.error("Erro em getAllUsersFromSystemController:", error);
+    if (error instanceof Error) {
+      return reply.status(400).send({
+        status: "error",
+        message: error.message
+      });
+    }
+    return reply.status(500).send({
+      status: "error",
+      message: "Internal server error"
+    });
+  }
+}
+async function checkEmailAvailability(request, reply) {
+  try {
+    const { email } = request.params;
+    console.log("=== CHECK EMAIL AVAILABILITY ===");
+    console.log("Email:", email);
+    const existingUser = await prisma2.users.findUnique({
+      where: { email },
+      select: { id: true, email: true }
+    });
+    const isAvailable = !existingUser;
+    console.log("Email dispon\xEDvel:", isAvailable);
+    return reply.status(200).send({
+      status: "success",
+      data: {
+        email,
+        isAvailable,
+        message: isAvailable ? "Email dispon\xEDvel" : "Email j\xE1 est\xE1 em uso"
+      }
+    });
+  } catch (error) {
+    console.error("Erro ao verificar disponibilidade do email:", error);
+    return reply.status(500).send({
+      status: "error",
+      message: "Erro ao verificar disponibilidade do email"
+    });
+  }
+}
+async function checkCpfAvailability(request, reply) {
+  try {
+    const { cpf } = request.params;
+    console.log("=== CHECK CPF AVAILABILITY ===");
+    console.log("CPF:", cpf);
+    const existingUser = await prisma2.users.findUnique({
+      where: { cpf },
+      select: { id: true, cpf: true }
+    });
+    const isAvailable = !existingUser;
+    console.log("CPF dispon\xEDvel:", isAvailable);
+    return reply.status(200).send({
+      status: "success",
+      data: {
+        cpf,
+        isAvailable,
+        message: isAvailable ? "CPF dispon\xEDvel" : "CPF j\xE1 est\xE1 em uso"
+      }
+    });
+  } catch (error) {
+    console.error("Erro ao verificar disponibilidade do CPF:", error);
+    return reply.status(500).send({
+      status: "error",
+      message: "Erro ao verificar disponibilidade do CPF"
+    });
+  }
+}
 
 // src/docs/usuario.ts
-var import_v43 = require("zod/v4");
+var import_zod3 = require("zod");
 
 // src/middlewares/auth.ts
 async function autenticarToken(request, reply) {
@@ -544,10 +1366,12 @@ async function autenticarToken(request, reply) {
       throw new Unauthorized("Formato de token inv\xE1lido. Use: Bearer <token>");
     }
     await request.jwtVerify();
-    const { userId, register } = request.user;
+    const { userId, primaryRole, primaryOrganizationId, userOrganizations } = request.user;
     request.usuario = {
       id: userId,
-      register
+      primaryRole,
+      primaryOrganizationId,
+      userOrganizations
     };
   } catch (error) {
     if (error instanceof Unauthorized) {
@@ -564,85 +1388,180 @@ async function autenticarToken(request, reply) {
 }
 
 // src/utils/scheme.ts
-var import_v4 = require("zod/v4");
-var headersSchema = import_v4.z.object({
-  authorization: import_v4.z.string()
+var import_zod = require("zod");
+var headersSchema = import_zod.z.object({
+  authorization: import_zod.z.string()
 });
 
 // src/types/usuario.ts
-var import_v42 = require("zod/v4");
-
-// src/utils/formatDate.ts
-function formatDate(date) {
-  if (!date) return null;
-  const dateObj = typeof date === "string" ? new Date(date) : date;
-  if (isNaN(dateObj.getTime())) return null;
-  return dateObj.toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "America/Sao_Paulo"
-  });
-}
-
-// src/types/usuario.ts
-var schemaRegister = import_v42.z.enum(["patient", "parents", "doctor", "attendant"]);
-var responseUsuarioSchemaProps = {
-  id: import_v42.z.string(),
-  name: import_v42.z.string().nullish(),
-  email: import_v42.z.string().transform((value) => value.toLowerCase()),
-  image: import_v42.z.string().nullish(),
-  birthDate: import_v42.z.coerce.string().or(import_v42.z.date()).transform(formatDate).nullish(),
-  cpf: import_v42.z.string(),
-  phone: import_v42.z.string().nullish(),
-  address: import_v42.z.string().nullish(),
-  numberOfAddress: import_v42.z.string().nullish(),
-  complement: import_v42.z.string().nullish(),
-  city: import_v42.z.string().nullish(),
-  state: import_v42.z.string().nullish(),
-  zipCode: import_v42.z.string().nullish(),
-  country: import_v42.z.string().nullish(),
-  cid: import_v42.z.string().nullish(),
-  register: schemaRegister,
-  createdAt: import_v42.z.coerce.string().or(import_v42.z.date()).transform(formatDate).nullish(),
-  updatedAt: import_v42.z.coerce.string().or(import_v42.z.date()).transform(formatDate).nullish()
-};
-var responseUsuarioSchema = import_v42.z.object(responseUsuarioSchemaProps);
-var requestUsuarioSchema = responseUsuarioSchema.omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true
-}).extend({
-  password: import_v42.z.string().describe("Senha obrigat\xF3ria para cria\xE7\xE3o do usu\xE1rio")
+var import_zod2 = require("zod");
+var schemaRegister = import_zod2.z.enum([
+  "patient",
+  "parents",
+  "professional",
+  "attendant"
+]);
+var schemaUsuario = import_zod2.z.object({
+  name: import_zod2.z.string().min(1, "Nome \xE9 obrigat\xF3rio"),
+  email: import_zod2.z.string().email("Email inv\xE1lido"),
+  password: import_zod2.z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  cpf: import_zod2.z.string().min(11, "CPF deve ter pelo menos 11 caracteres"),
+  phone: import_zod2.z.string().optional(),
+  birthDate: import_zod2.z.string().optional(),
+  address: import_zod2.z.string().optional(),
+  numberOfAddress: import_zod2.z.string().optional(),
+  complement: import_zod2.z.string().optional(),
+  city: import_zod2.z.string().optional(),
+  state: import_zod2.z.string().optional(),
+  zipCode: import_zod2.z.string().optional(),
+  country: import_zod2.z.string().optional(),
+  image: import_zod2.z.string().optional()
 });
-var editUsuarioSchema = requestUsuarioSchema.partial();
-var editUsuarioByAdminSchema = editUsuarioSchema.extend({
-  cid: import_v42.z.string().optional().describe("CID - C\xF3digo Internacional de Doen\xE7as (apenas administradores)")
+var schemaUsuarioUpdate = import_zod2.z.object({
+  name: import_zod2.z.string().min(1, "Nome \xE9 obrigat\xF3rio").optional(),
+  email: import_zod2.z.string().email("Email inv\xE1lido").optional(),
+  phone: import_zod2.z.string().optional(),
+  birthDate: import_zod2.z.string().optional(),
+  address: import_zod2.z.string().optional(),
+  numberOfAddress: import_zod2.z.string().optional(),
+  complement: import_zod2.z.string().optional(),
+  city: import_zod2.z.string().optional(),
+  state: import_zod2.z.string().optional(),
+  zipCode: import_zod2.z.string().optional(),
+  country: import_zod2.z.string().optional(),
+  image: import_zod2.z.string().optional()
 });
-var responseUsuarioLoginSchema = import_v42.z.object({
-  token: import_v42.z.string(),
-  usuario: responseUsuarioSchema
+var schemaPatientCID = import_zod2.z.object({
+  patientId: import_zod2.z.string().min(1, "ID do paciente \xE9 obrigat\xF3rio"),
+  professionalId: import_zod2.z.string().min(1, "ID do profissional \xE9 obrigat\xF3rio"),
+  organizationId: import_zod2.z.string().min(1, "ID da organiza\xE7\xE3o \xE9 obrigat\xF3rio"),
+  cid: import_zod2.z.string().min(1, "CID \xE9 obrigat\xF3rio"),
+  description: import_zod2.z.string().optional()
 });
-var responseDoctorSchema = import_v42.z.object({
-  id: import_v42.z.string(),
-  name: import_v42.z.string().nullish(),
-  email: import_v42.z.string().transform((value) => value.toLowerCase()),
-  image: import_v42.z.string().nullish(),
-  phone: import_v42.z.string().nullish(),
-  address: import_v42.z.string().nullish(),
-  city: import_v42.z.string().nullish(),
-  state: import_v42.z.string().nullish(),
-  cid: import_v42.z.string().nullish(),
-  register: schemaRegister,
-  createdAt: import_v42.z.coerce.string().or(import_v42.z.date()).transform(formatDate).nullish()
+var schemaPatientCIDUpdate = import_zod2.z.object({
+  cid: import_zod2.z.string().min(1, "CID \xE9 obrigat\xF3rio"),
+  description: import_zod2.z.string().optional()
 });
+var schemaUsuarioCreate = import_zod2.z.object({
+  name: import_zod2.z.string().min(1, "Nome \xE9 obrigat\xF3rio"),
+  email: import_zod2.z.string().email("Email inv\xE1lido"),
+  password: import_zod2.z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  cpf: import_zod2.z.string().min(11, "CPF deve ter pelo menos 11 caracteres"),
+  phone: import_zod2.z.string().optional(),
+  birthDate: import_zod2.z.string().optional(),
+  address: import_zod2.z.string().optional(),
+  numberOfAddress: import_zod2.z.string().optional(),
+  complement: import_zod2.z.string().optional(),
+  city: import_zod2.z.string().optional(),
+  state: import_zod2.z.string().optional(),
+  zipCode: import_zod2.z.string().optional(),
+  country: import_zod2.z.string().optional(),
+  image: import_zod2.z.string().optional()
+});
+var schemaUsuarioCreateAdmin = import_zod2.z.object({
+  name: import_zod2.z.string().min(1, "Nome \xE9 obrigat\xF3rio"),
+  email: import_zod2.z.string().email("Email inv\xE1lido"),
+  password: import_zod2.z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  cpf: import_zod2.z.string().min(11, "CPF deve ter pelo menos 11 caracteres"),
+  phone: import_zod2.z.string().optional(),
+  birthDate: import_zod2.z.string().optional(),
+  address: import_zod2.z.string().optional(),
+  numberOfAddress: import_zod2.z.string().optional(),
+  complement: import_zod2.z.string().optional(),
+  city: import_zod2.z.string().optional(),
+  state: import_zod2.z.string().optional(),
+  zipCode: import_zod2.z.string().optional(),
+  country: import_zod2.z.string().optional(),
+  image: import_zod2.z.string().optional()
+});
+var schemaUsuarioUpdateAdmin = import_zod2.z.object({
+  name: import_zod2.z.string().min(1, "Nome \xE9 obrigat\xF3rio").optional(),
+  email: import_zod2.z.string().email("Email inv\xE1lido").optional(),
+  password: import_zod2.z.string().min(6, "Senha deve ter pelo menos 6 caracteres").optional(),
+  cpf: import_zod2.z.string().min(11, "CPF deve ter pelo menos 11 caracteres").optional(),
+  phone: import_zod2.z.string().optional(),
+  birthDate: import_zod2.z.string().optional(),
+  address: import_zod2.z.string().optional(),
+  numberOfAddress: import_zod2.z.string().optional(),
+  complement: import_zod2.z.string().optional(),
+  city: import_zod2.z.string().optional(),
+  state: import_zod2.z.string().optional(),
+  zipCode: import_zod2.z.string().optional(),
+  country: import_zod2.z.string().optional(),
+  image: import_zod2.z.string().optional()
+});
+var schemaUsuarioCreateByProfessional = import_zod2.z.object({
+  name: import_zod2.z.string().min(1, "Nome \xE9 obrigat\xF3rio"),
+  email: import_zod2.z.string().email("Email inv\xE1lido"),
+  password: import_zod2.z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  cpf: import_zod2.z.string().min(11, "CPF deve ter pelo menos 11 caracteres"),
+  phone: import_zod2.z.string().optional(),
+  birthDate: import_zod2.z.string().optional(),
+  address: import_zod2.z.string().optional(),
+  numberOfAddress: import_zod2.z.string().optional(),
+  complement: import_zod2.z.string().optional(),
+  city: import_zod2.z.string().optional(),
+  state: import_zod2.z.string().optional(),
+  zipCode: import_zod2.z.string().optional(),
+  country: import_zod2.z.string().optional(),
+  image: import_zod2.z.string().optional()
+});
+var schemaUsuarioUpdateByProfessional = import_zod2.z.object({
+  name: import_zod2.z.string().min(1, "Nome \xE9 obrigat\xF3rio").optional(),
+  email: import_zod2.z.string().email("Email inv\xE1lido").optional(),
+  password: import_zod2.z.string().min(6, "Senha deve ter pelo menos 6 caracteres").optional(),
+  cpf: import_zod2.z.string().min(11, "CPF deve ter pelo menos 11 caracteres").optional(),
+  phone: import_zod2.z.string().optional(),
+  birthDate: import_zod2.z.string().optional(),
+  address: import_zod2.z.string().optional(),
+  numberOfAddress: import_zod2.z.string().optional(),
+  complement: import_zod2.z.string().optional(),
+  city: import_zod2.z.string().optional(),
+  state: import_zod2.z.string().optional(),
+  zipCode: import_zod2.z.string().optional(),
+  country: import_zod2.z.string().optional(),
+  image: import_zod2.z.string().optional()
+});
+var editUsuarioSchema = schemaUsuarioUpdate;
+var editUsuarioByAdminSchema = schemaUsuarioUpdateByProfessional;
+var requestUsuarioSchema = schemaUsuarioCreate;
+var responseProfessionalSchema = import_zod2.z.object({
+  id: import_zod2.z.string(),
+  name: import_zod2.z.string(),
+  email: import_zod2.z.string(),
+  cpf: import_zod2.z.string(),
+  phone: import_zod2.z.string().nullable(),
+  birthDate: import_zod2.z.string().nullable(),
+  address: import_zod2.z.string().nullable(),
+  numberOfAddress: import_zod2.z.string().nullable(),
+  complement: import_zod2.z.string().nullable(),
+  city: import_zod2.z.string().nullable(),
+  state: import_zod2.z.string().nullable(),
+  zipCode: import_zod2.z.string().nullable(),
+  country: import_zod2.z.string().nullable(),
+  image: import_zod2.z.string().nullable(),
+  primaryRole: import_zod2.z.string(),
+  primaryOrganizationId: import_zod2.z.string().nullable(),
+  organizations: import_zod2.z.array(
+    import_zod2.z.object({
+      id: import_zod2.z.string(),
+      name: import_zod2.z.string(),
+      role: import_zod2.z.string()
+    })
+  ),
+  createdAt: import_zod2.z.string(),
+  updatedAt: import_zod2.z.string()
+});
+var responseUsuarioLoginSchema = import_zod2.z.object({
+  token: import_zod2.z.string(),
+  usuario: responseProfessionalSchema
+});
+var responseUsuarioSchema = responseProfessionalSchema;
 
 // src/docs/usuario.ts
-var errorResponseSchema = import_v43.z.object({
-  status: import_v43.z.literal("error"),
-  message: import_v43.z.string()
+var errorResponseSchema = import_zod3.z.object({
+  status: import_zod3.z.literal("error"),
+  message: import_zod3.z.string()
 });
 var usuarioDocs = class {
 };
@@ -654,8 +1573,8 @@ usuarioDocs.getUsuario = {
     description: "Retorna os dados do usu\xE1rio logado",
     headers: headersSchema,
     response: {
-      200: import_v43.z.object({
-        status: import_v43.z.literal("success"),
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
         data: responseUsuarioSchema
       }),
       400: errorResponseSchema,
@@ -663,15 +1582,15 @@ usuarioDocs.getUsuario = {
     }
   }
 };
-usuarioDocs.getDoctors = {
+usuarioDocs.getProfessionals = {
   schema: {
     tags: ["Usuario"],
-    summary: "Listar todos os m\xE9dicos",
-    description: "Retorna todos os m\xE9dicos cadastrados no sistema",
+    summary: "Listar todos os profissionais",
+    description: "Retorna todos os profissionais cadastrados no sistema",
     response: {
-      200: import_v43.z.object({
-        status: import_v43.z.literal("success"),
-        data: import_v43.z.array(responseDoctorSchema)
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
+        data: import_zod3.z.array(responseProfessionalSchema)
       }),
       500: errorResponseSchema
     }
@@ -685,9 +1604,9 @@ usuarioDocs.getAllUsuarios = {
     description: "Retorna todos os usu\xE1rios cadastrados no sistema (apenas m\xE9dicos podem acessar)",
     headers: headersSchema,
     response: {
-      200: import_v43.z.object({
-        status: import_v43.z.literal("success"),
-        data: import_v43.z.array(responseUsuarioSchema)
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
+        data: import_zod3.z.array(responseUsuarioSchema)
       }),
       401: errorResponseSchema,
       403: errorResponseSchema,
@@ -702,12 +1621,12 @@ usuarioDocs.getUsuarioById = {
     summary: "Buscar usu\xE1rio por ID",
     description: "Retorna todas as informa\xE7\xF5es de um usu\xE1rio espec\xEDfico pelo ID. Apenas m\xE9dicos podem acessar.",
     headers: headersSchema,
-    params: import_v43.z.object({
-      id: import_v43.z.string().describe("ID do usu\xE1rio")
+    params: import_zod3.z.object({
+      id: import_zod3.z.string().describe("ID do usu\xE1rio")
     }),
     response: {
-      200: import_v43.z.object({
-        status: import_v43.z.literal("success"),
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
         data: responseUsuarioSchema
       }),
       401: errorResponseSchema,
@@ -724,13 +1643,13 @@ usuarioDocs.putUsuarioByDoctor = {
     summary: "Atualizar dados de usu\xE1rio (m\xE9dico)",
     description: "Permite que m\xE9dicos atualizem os dados de qualquer usu\xE1rio do sistema, incluindo o campo CID",
     headers: headersSchema,
-    params: import_v43.z.object({
-      id: import_v43.z.string().describe("ID do usu\xE1rio a ser atualizado")
+    params: import_zod3.z.object({
+      id: import_zod3.z.string().describe("ID do usu\xE1rio a ser atualizado")
     }),
     body: editUsuarioByAdminSchema,
     response: {
-      200: import_v43.z.object({
-        status: import_v43.z.literal("success"),
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
         data: responseUsuarioSchema
       }),
       400: errorResponseSchema,
@@ -746,13 +1665,13 @@ usuarioDocs.loginUsuario = {
     tags: ["Usuario"],
     summary: "Login do usu\xE1rio",
     description: "Login do usu\xE1rio",
-    body: import_v43.z.object({
-      email: import_v43.z.string().transform((value) => value.toLowerCase()),
-      password: import_v43.z.string()
+    body: import_zod3.z.object({
+      email: import_zod3.z.string().transform((value) => value.toLowerCase()),
+      password: import_zod3.z.string()
     }),
     response: {
-      200: import_v43.z.object({
-        status: import_v43.z.literal("success"),
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
         data: responseUsuarioLoginSchema
       }),
       400: errorResponseSchema,
@@ -768,8 +1687,8 @@ usuarioDocs.postUsuario = {
     description: "Cria um novo usu\xE1rio",
     body: requestUsuarioSchema,
     response: {
-      200: import_v43.z.object({
-        status: import_v43.z.literal("success"),
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
         data: responseUsuarioLoginSchema
       }),
       400: errorResponseSchema,
@@ -785,8 +1704,8 @@ usuarioDocs.postUsuarioAdmin = {
     description: "Cria um novo usu\xE1rio com a role especificada",
     body: requestUsuarioSchema,
     response: {
-      200: import_v43.z.object({
-        status: import_v43.z.literal("success"),
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
         data: responseUsuarioLoginSchema
       }),
       400: errorResponseSchema,
@@ -803,8 +1722,8 @@ usuarioDocs.putUsuario = {
     headers: headersSchema,
     body: editUsuarioSchema,
     response: {
-      200: import_v43.z.object({
-        status: import_v43.z.literal("success"),
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
         data: responseUsuarioSchema
       }),
       400: errorResponseSchema,
@@ -816,22 +1735,235 @@ usuarioDocs.deleteUsuario = {
   preHandler: [autenticarToken],
   schema: {
     tags: ["Usuario"],
-    summary: "Deletar um usu\xE1rio",
-    description: "Deleta um usu\xE1rio espec\xEDfico. Apenas admins podem deletar usu\xE1rios.",
+    summary: "Deletar usu\xE1rio",
+    description: "Deleta um usu\xE1rio do sistema. Apenas administradores podem acessar.",
     headers: headersSchema,
-    params: import_v43.z.object({
-      id: import_v43.z.string().describe("ID do usu\xE1rio a ser deletado")
+    params: import_zod3.z.object({
+      id: import_zod3.z.string().describe("ID do usu\xE1rio a ser deletado")
     }),
     response: {
-      200: import_v43.z.object({
-        status: import_v43.z.literal("success"),
-        data: import_v43.z.object({
-          message: import_v43.z.string()
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
+        data: import_zod3.z.object({
+          message: import_zod3.z.string()
+        })
+      }),
+      401: errorResponseSchema,
+      403: errorResponseSchema,
+      404: errorResponseSchema,
+      500: errorResponseSchema
+    }
+  }
+};
+usuarioDocs.addUserToOrganization = {
+  preHandler: [autenticarToken],
+  schema: {
+    tags: ["Usuario"],
+    summary: "Adicionar usu\xE1rio a organiza\xE7\xE3o",
+    description: "Adiciona um usu\xE1rio existente a uma organiza\xE7\xE3o com um papel espec\xEDfico. Apenas administradores podem acessar.",
+    headers: headersSchema,
+    body: import_zod3.z.object({
+      userId: import_zod3.z.string().describe("ID do usu\xE1rio"),
+      organizationId: import_zod3.z.string().describe("ID da organiza\xE7\xE3o"),
+      role: import_zod3.z.enum([
+        "owner",
+        "admin",
+        "professional",
+        "attendant",
+        "patient",
+        "member"
+      ]).describe("Papel do usu\xE1rio na organiza\xE7\xE3o")
+    }),
+    response: {
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
+        data: import_zod3.z.object({
+          id: import_zod3.z.string(),
+          userId: import_zod3.z.string(),
+          organizationId: import_zod3.z.string(),
+          role: import_zod3.z.string(),
+          isActive: import_zod3.z.boolean(),
+          joinedAt: import_zod3.z.string(),
+          createdAt: import_zod3.z.string(),
+          updatedAt: import_zod3.z.string(),
+          organization: import_zod3.z.object({
+            id: import_zod3.z.string(),
+            name: import_zod3.z.string()
+          })
         })
       }),
       400: errorResponseSchema,
       401: errorResponseSchema,
+      403: errorResponseSchema,
       404: errorResponseSchema,
+      500: errorResponseSchema
+    }
+  }
+};
+usuarioDocs.getUserOrganizations = {
+  preHandler: [autenticarToken],
+  schema: {
+    tags: ["Usuario"],
+    summary: "Buscar organiza\xE7\xF5es de usu\xE1rio",
+    description: "Busca todas as organiza\xE7\xF5es de um usu\xE1rio espec\xEDfico. Apenas administradores podem acessar.",
+    headers: headersSchema,
+    params: import_zod3.z.object({
+      userId: import_zod3.z.string().describe("ID do usu\xE1rio")
+    }),
+    response: {
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
+        data: import_zod3.z.array(
+          import_zod3.z.object({
+            id: import_zod3.z.string(),
+            userId: import_zod3.z.string(),
+            organizationId: import_zod3.z.string(),
+            role: import_zod3.z.string(),
+            isActive: import_zod3.z.boolean(),
+            joinedAt: import_zod3.z.string(),
+            createdAt: import_zod3.z.string(),
+            updatedAt: import_zod3.z.string(),
+            organization: import_zod3.z.object({
+              id: import_zod3.z.string(),
+              name: import_zod3.z.string(),
+              description: import_zod3.z.string().nullable()
+            })
+          })
+        )
+      }),
+      401: errorResponseSchema,
+      403: errorResponseSchema,
+      404: errorResponseSchema,
+      500: errorResponseSchema
+    }
+  }
+};
+usuarioDocs.getUsersFromCurrentOrganization = {
+  preHandler: [autenticarToken],
+  schema: {
+    tags: ["Usuario"],
+    summary: "Buscar usu\xE1rios da organiza\xE7\xE3o atual",
+    description: "Busca todos os usu\xE1rios da organiza\xE7\xE3o atual do usu\xE1rio logado. Apenas administradores podem acessar.",
+    headers: headersSchema,
+    response: {
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
+        data: import_zod3.z.array(
+          import_zod3.z.object({
+            id: import_zod3.z.string(),
+            name: import_zod3.z.string().nullable(),
+            email: import_zod3.z.string(),
+            cpf: import_zod3.z.string(),
+            phone: import_zod3.z.string().nullable(),
+            birthDate: import_zod3.z.string().nullable(),
+            address: import_zod3.z.string().nullable(),
+            numberOfAddress: import_zod3.z.string().nullable(),
+            complement: import_zod3.z.string().nullable(),
+            city: import_zod3.z.string().nullable(),
+            state: import_zod3.z.string().nullable(),
+            zipCode: import_zod3.z.string().nullable(),
+            country: import_zod3.z.string().nullable(),
+            createdAt: import_zod3.z.string(),
+            updatedAt: import_zod3.z.string(),
+            primaryRole: import_zod3.z.string().nullable(),
+            primaryOrganizationId: import_zod3.z.string().nullable(),
+            organizations: import_zod3.z.array(
+              import_zod3.z.object({
+                id: import_zod3.z.string(),
+                role: import_zod3.z.string(),
+                joinedAt: import_zod3.z.string(),
+                isActive: import_zod3.z.boolean()
+              })
+            )
+          })
+        )
+      }),
+      400: errorResponseSchema,
+      401: errorResponseSchema,
+      403: errorResponseSchema,
+      500: errorResponseSchema
+    }
+  }
+};
+usuarioDocs.removeUserFromOrganization = {
+  preHandler: [autenticarToken],
+  schema: {
+    tags: ["Usuario"],
+    summary: "Remover usu\xE1rio da organiza\xE7\xE3o",
+    description: "Remove um usu\xE1rio da organiza\xE7\xE3o atual do usu\xE1rio logado. Apenas administradores podem acessar.",
+    headers: headersSchema,
+    params: import_zod3.z.object({
+      userId: import_zod3.z.string().describe("ID do usu\xE1rio a ser removido")
+    }),
+    response: {
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
+        data: import_zod3.z.object({
+          id: import_zod3.z.string(),
+          userId: import_zod3.z.string(),
+          organizationId: import_zod3.z.string(),
+          role: import_zod3.z.string(),
+          isActive: import_zod3.z.boolean(),
+          joinedAt: import_zod3.z.string(),
+          createdAt: import_zod3.z.string(),
+          updatedAt: import_zod3.z.string(),
+          organization: import_zod3.z.object({
+            id: import_zod3.z.string(),
+            name: import_zod3.z.string()
+          })
+        })
+      }),
+      400: errorResponseSchema,
+      401: errorResponseSchema,
+      403: errorResponseSchema,
+      404: errorResponseSchema,
+      500: errorResponseSchema
+    }
+  }
+};
+usuarioDocs.getAllUsersFromSystem = {
+  preHandler: [autenticarToken],
+  schema: {
+    tags: ["Usuario"],
+    summary: "Buscar todos os usu\xE1rios do sistema",
+    description: "Busca todos os usu\xE1rios do sistema. Apenas propriet\xE1rios, administradores e membros podem acessar.",
+    headers: headersSchema,
+    response: {
+      200: import_zod3.z.object({
+        status: import_zod3.z.literal("success"),
+        data: import_zod3.z.array(
+          import_zod3.z.object({
+            id: import_zod3.z.string(),
+            name: import_zod3.z.string().nullable(),
+            email: import_zod3.z.string(),
+            cpf: import_zod3.z.string(),
+            phone: import_zod3.z.string().nullable(),
+            birthDate: import_zod3.z.string().nullable(),
+            address: import_zod3.z.string().nullable(),
+            numberOfAddress: import_zod3.z.string().nullable(),
+            complement: import_zod3.z.string().nullable(),
+            city: import_zod3.z.string().nullable(),
+            state: import_zod3.z.string().nullable(),
+            zipCode: import_zod3.z.string().nullable(),
+            country: import_zod3.z.string().nullable(),
+            createdAt: import_zod3.z.string(),
+            updatedAt: import_zod3.z.string(),
+            primaryRole: import_zod3.z.string().nullable(),
+            primaryOrganizationId: import_zod3.z.string().nullable(),
+            organizations: import_zod3.z.array(
+              import_zod3.z.object({
+                id: import_zod3.z.string(),
+                name: import_zod3.z.string(),
+                role: import_zod3.z.string(),
+                joinedAt: import_zod3.z.string()
+              })
+            )
+          })
+        )
+      }),
+      400: errorResponseSchema,
+      401: errorResponseSchema,
+      403: errorResponseSchema,
       500: errorResponseSchema
     }
   }
@@ -840,7 +1972,7 @@ usuarioDocs.deleteUsuario = {
 // src/routes/user/usuarioRoutes.ts
 async function usuarioRoutes(app) {
   app.withTypeProvider().get("/user", usuarioDocs.getUsuario, getUsuario);
-  app.withTypeProvider().get("/doctors", usuarioDocs.getDoctors, getDoctors);
+  app.withTypeProvider().get("/professionals", usuarioDocs.getProfessionals, getProfessionals);
   app.withTypeProvider().get("/users", usuarioDocs.getAllUsuarios, getAllUsuarios);
   app.withTypeProvider().get("/users/:id", usuarioDocs.getUsuarioById, getUsuarioById);
   app.withTypeProvider().post("/user/login", usuarioDocs.loginUsuario, loginUsuario);
@@ -849,6 +1981,33 @@ async function usuarioRoutes(app) {
   app.withTypeProvider().put("/user", usuarioDocs.putUsuario, updateUsuario);
   app.withTypeProvider().put("/user/:id", usuarioDocs.putUsuarioByDoctor, updateUsuarioByDoctor);
   app.withTypeProvider().delete("/user/:id", usuarioDocs.deleteUsuario, deleteUsuario);
+  app.withTypeProvider().post(
+    "/user/organization",
+    usuarioDocs.addUserToOrganization,
+    addUserToOrganizationController
+  );
+  app.withTypeProvider().get(
+    "/user/:userId/organizations",
+    usuarioDocs.getUserOrganizations,
+    getUserOrganizationsController
+  );
+  app.withTypeProvider().get(
+    "/user/organization/current",
+    usuarioDocs.getUsersFromCurrentOrganization,
+    getUsersFromCurrentOrganizationController
+  );
+  app.withTypeProvider().delete(
+    "/user/organization/:userId",
+    usuarioDocs.removeUserFromOrganization,
+    removeUserFromOrganizationController
+  );
+  app.withTypeProvider().get(
+    "/user/system/all",
+    usuarioDocs.getAllUsersFromSystem,
+    getAllUsersFromSystemController
+  );
+  app.withTypeProvider().get("/user/check-email/:email", checkEmailAvailability);
+  app.withTypeProvider().get("/user/check-cpf/:cpf", checkCpfAvailability);
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {

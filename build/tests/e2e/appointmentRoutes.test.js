@@ -18730,11 +18730,11 @@ async function sendAppointmentConfirmation(appointment) {
     appointmentId: appointment.id,
     type: "confirmation",
     title: "Agendamento Confirmado",
-    message: `Seu agendamento com ${appointment.doctor.name} foi confirmado para ${date} \xE0s ${time}`
+    message: `Seu agendamento com ${appointment.professional.name} foi confirmado para ${date} \xE0s ${time}`
   });
   const emailHtml = getAppointmentConfirmationTemplate({
     patientName: appointment.patient.name || "Paciente",
-    doctorName: appointment.doctor.name || "Profissional",
+    professionalName: appointment.professional.name || "Profissional",
     date,
     time
   });
@@ -18747,11 +18747,11 @@ async function sendAppointmentCancellation(appointment, reason) {
     appointmentId: appointment.id,
     type: "cancellation",
     title: "Agendamento Cancelado",
-    message: `Seu agendamento com ${appointment.doctor.name} para ${date} \xE0s ${time} foi cancelado`
+    message: `Seu agendamento com ${appointment.professional.name} para ${date} \xE0s ${time} foi cancelado`
   });
   const emailHtml = getAppointmentCancellationTemplate({
     patientName: appointment.patient.name || "Paciente",
-    doctorName: appointment.doctor.name || "Profissional",
+    professionalName: appointment.professional.name || "Profissional",
     date,
     time,
     reason
@@ -18766,7 +18766,8 @@ var END_HOUR = 20;
 var selectAppointment = {
   id: true,
   patientId: true,
-  doctorId: true,
+  professionalId: true,
+  organizationId: true,
   startTime: true,
   endTime: true,
   status: true,
@@ -18784,16 +18785,22 @@ var selectAppointmentWithUsers = {
       phone: true
     }
   },
-  doctor: {
+  professional: {
     select: {
       id: true,
       name: true,
       email: true,
       phone: true
     }
+  },
+  organization: {
+    select: {
+      id: true,
+      name: true
+    }
   }
 };
-async function checkSlotAvailability(doctorId, startTime, endTime) {
+async function checkSlotAvailability(professionalId, organizationId2, startTime, endTime) {
   const localStartTime = (0, import_moment_timezone2.default)(startTime).add(3, "hours").toDate();
   const localEndTime = (0, import_moment_timezone2.default)(endTime).add(3, "hours").toDate();
   console.log(
@@ -18803,7 +18810,8 @@ async function checkSlotAvailability(doctorId, startTime, endTime) {
   const dayOfWeek = appointmentDate.day();
   const availability = await prisma.availability.findFirst({
     where: {
-      doctorId,
+      professionalId,
+      organizationId: organizationId2,
       dayOfWeek,
       isActive: true
     }
@@ -18817,89 +18825,44 @@ async function checkSlotAvailability(doctorId, startTime, endTime) {
   const [availEndHour, availEndMin] = availability.endTime.split(":").map(Number);
   const availabilityStart = appointmentDate.clone().hour(availStartHour).minute(availStartMin);
   const availabilityEnd = appointmentDate.clone().hour(availEndHour).minute(availEndMin);
-  const appointmentStart = (0, import_moment_timezone2.default)(localStartTime).tz(TIMEZONE2);
-  const appointmentEnd = (0, import_moment_timezone2.default)(localEndTime).tz(TIMEZONE2);
-  console.log(
-    `\u{1F4C5} Disponibilidade do m\xE9dico: ${availabilityStart.format(
-      "HH:mm"
-    )} - ${availabilityEnd.format("HH:mm")}`
-  );
-  console.log(
-    `\u{1F4C5} Hor\xE1rio solicitado: ${appointmentStart.format(
-      "HH:mm"
-    )} - ${appointmentEnd.format("HH:mm")}`
-  );
-  if (appointmentStart.isBefore(availabilityStart) || appointmentEnd.isAfter(availabilityEnd)) {
+  const requestedStart = (0, import_moment_timezone2.default)(localStartTime).tz(TIMEZONE2);
+  const requestedEnd = (0, import_moment_timezone2.default)(localEndTime).tz(TIMEZONE2);
+  if (requestedStart.isBefore(availabilityStart) || requestedEnd.isAfter(availabilityEnd)) {
     throw new BadRequest(
-      `Hor\xE1rio fora da disponibilidade do m\xE9dico (${availabilityStart.format(
-        "HH:mm"
-      )} - ${availabilityEnd.format("HH:mm")})`
+      "Hor\xE1rio solicitado est\xE1 fora do per\xEDodo de disponibilidade do m\xE9dico"
     );
   }
-  const conflictingAppointment = await prisma.appointment.findFirst({
+  const existingAppointment = await prisma.appointment.findFirst({
     where: {
-      doctorId,
-      status: {
-        notIn: ["cancelled", "no_show"]
+      professionalId,
+      organizationId: organizationId2,
+      startTime: {
+        lt: localEndTime
       },
-      OR: [
-        {
-          AND: [
-            { startTime: { lte: localStartTime } },
-            { endTime: { gt: localStartTime } }
-          ]
-        },
-        {
-          AND: [
-            { startTime: { lt: localEndTime } },
-            { endTime: { gte: localEndTime } }
-          ]
-        },
-        {
-          AND: [
-            { startTime: { gte: localStartTime } },
-            { endTime: { lte: localEndTime } }
-          ]
-        }
-      ]
-    },
-    include: {
-      patient: {
-        select: {
-          id: true,
-          name: true
-        }
+      endTime: {
+        gt: localStartTime
+      },
+      status: {
+        in: ["scheduled", "confirmed"]
       }
     }
   });
-  if (conflictingAppointment) {
-    console.log(
-      `\u274C CONFLITO ENCONTRADO: Agendamento ID ${conflictingAppointment.id}`
-    );
-    console.log(
-      `   Hor\xE1rio conflitante: ${(0, import_moment_timezone2.default)(conflictingAppointment.startTime).tz(TIMEZONE2).format("DD/MM/YYYY HH:mm")} - ${(0, import_moment_timezone2.default)(conflictingAppointment.endTime).tz(TIMEZONE2).format("HH:mm")}`
-    );
-    console.log(
-      `   Paciente: ${conflictingAppointment.patient.name} (ID: ${conflictingAppointment.patient.id})`
-    );
-    console.log(`   Status: ${conflictingAppointment.status}`);
-    throw new BadRequest("Este hor\xE1rio j\xE1 est\xE1 ocupado");
+  if (existingAppointment) {
+    throw new BadRequest("J\xE1 existe um agendamento neste hor\xE1rio");
   }
-  console.log(
-    `\u2705 HOR\xC1RIO DISPON\xCDVEL: ${(0, import_moment_timezone2.default)(localStartTime).tz(TIMEZONE2).format("DD/MM/YYYY HH:mm")} - ${(0, import_moment_timezone2.default)(localEndTime).tz(TIMEZONE2).format("HH:mm")}`
-  );
+  return true;
 }
-async function generateAvailableSlots(doctorId, date) {
+async function generateAvailableSlots(professionalId, date) {
   console.log(`
 === INICIANDO GERA\xC7\xC3O DE SLOTS ===`);
   console.log(`Data solicitada: ${date}`);
-  console.log(`M\xE9dico ID: ${doctorId}`);
+  console.log(`Profissional ID: ${professionalId}`);
   const requestedDate = (0, import_moment_timezone2.default)(date).tz(TIMEZONE2);
   const dayOfWeek = requestedDate.day();
   console.log(`Dia da semana: ${dayOfWeek} (${requestedDate.format("dddd")})`);
   const availability = await prisma.availability.findFirst({
     where: {
-      doctorId,
+      professionalId,
       dayOfWeek,
       isActive: true
     }
@@ -18924,7 +18887,7 @@ async function generateAvailableSlots(doctorId, date) {
   );
   const existingAppointments = await prisma.appointment.findMany({
     where: {
-      doctorId,
+      professionalId,
       startTime: {
         gte: startOfDay,
         lte: endOfDay
@@ -18938,7 +18901,7 @@ async function generateAvailableSlots(doctorId, date) {
     }
   });
   console.log(`=== AGENDAMENTOS EXISTENTES PARA ${date} ===`);
-  console.log(`M\xE9dico ID: ${doctorId}`);
+  console.log(`Profissional ID: ${professionalId}`);
   console.log(`Total de agendamentos: ${existingAppointments.length}`);
   existingAppointments.forEach((appointment, index2) => {
     console.log(
@@ -19062,30 +19025,56 @@ async function generateAvailableSlots(doctorId, date) {
   return slots;
 }
 var createAppointment = async (appointmentData) => {
-  const { patientId, doctorId, startTime, endTime, notes } = appointmentData;
+  const {
+    patientId,
+    professionalId,
+    organizationId: organizationId2,
+    startTime,
+    endTime,
+    notes
+  } = appointmentData;
   const patientIdString = typeof patientId === "string" ? patientId : patientId.id;
-  const doctorIdString = typeof doctorId === "string" ? doctorId : doctorId.id;
+  const professionalIdString = typeof professionalId === "string" ? professionalId : professionalId.id;
+  const organizationIdString = typeof organizationId2 === "string" ? organizationId2 : organizationId2.id;
   const patient = await prisma.users.findUnique({
     where: { id: patientIdString }
   });
   if (!patient) {
     throw new Error("Paciente n\xE3o encontrado");
   }
-  const doctor = await prisma.users.findUnique({
-    where: { id: doctorIdString, register: "doctor" }
+  const professional = await prisma.users.findUnique({
+    where: { id: professionalIdString }
   });
-  if (!doctor) {
-    throw new Error("M\xE9dico n\xE3o encontrado");
+  if (!professional) {
+    throw new Error("Profissional n\xE3o encontrado");
+  }
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationIdString }
+  });
+  if (!organization) {
+    throw new Error("Organiza\xE7\xE3o n\xE3o encontrada");
   }
   await checkSlotAvailability(
-    doctorIdString,
+    professionalIdString,
+    organizationIdString,
     new Date(startTime),
     new Date(endTime)
   );
+  const canSchedule = await canPatientScheduleWithProfessional(
+    patientIdString,
+    professionalIdString,
+    new Date(startTime)
+  );
+  if (!canSchedule.canSchedule) {
+    throw new BadRequest(
+      canSchedule.reason || "N\xE3o \xE9 poss\xEDvel agendar este hor\xE1rio"
+    );
+  }
   const appointment = await prisma.appointment.create({
     data: {
       patientId: patientIdString,
-      doctorId: doctorIdString,
+      professionalId: professionalIdString,
+      organizationId: organizationIdString,
       startTime: (0, import_moment_timezone2.default)(startTime).add(3, "hours").toDate(),
       endTime: (0, import_moment_timezone2.default)(endTime).add(3, "hours").toDate(),
       notes: notes || "",
@@ -19100,12 +19089,18 @@ var createAppointment = async (appointmentData) => {
           phone: true
         }
       },
-      doctor: {
+      professional: {
         select: {
           id: true,
           name: true,
           email: true,
           phone: true
+        }
+      },
+      organization: {
+        select: {
+          id: true,
+          name: true
         }
       }
     }
@@ -19117,6 +19112,61 @@ var createAppointment = async (appointmentData) => {
   }
   return appointment;
 };
+var canPatientScheduleWithProfessional = async (patientId, professionalId, requestedDate) => {
+  try {
+    if (requestedDate) {
+      const startOfDay = (0, import_moment_timezone2.default)(requestedDate).startOf("day").toDate();
+      const endOfDay = (0, import_moment_timezone2.default)(requestedDate).endOf("day").toDate();
+      const existingAppointment = await prisma.appointment.findFirst({
+        where: {
+          patientId,
+          professionalId,
+          startTime: {
+            gte: startOfDay,
+            lte: endOfDay
+          },
+          status: {
+            in: ["scheduled", "confirmed"]
+          }
+        },
+        include: {
+          patient: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          },
+          professional: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          }
+        }
+      });
+      if (existingAppointment) {
+        return {
+          canSchedule: false,
+          reason: `Voc\xEA j\xE1 possui um agendamento com ${existingAppointment.professional.name} no dia ${(0, import_moment_timezone2.default)(existingAppointment.startTime).format(
+            "DD/MM/YYYY"
+          )} \xE0s ${(0, import_moment_timezone2.default)(existingAppointment.startTime).format("HH:mm")}`,
+          existingAppointment
+        };
+      }
+    }
+    return {
+      canSchedule: true
+    };
+  } catch (error) {
+    console.error("Erro ao verificar disponibilidade do paciente:", error);
+    return {
+      canSchedule: false,
+      reason: "Erro ao verificar disponibilidade"
+    };
+  }
+};
 function adjustAppointmentTimes(appointments) {
   return appointments.map((appointment) => ({
     ...appointment,
@@ -19124,34 +19174,40 @@ function adjustAppointmentTimes(appointments) {
     endTime: appointment.endTime ? (0, import_moment_timezone2.default)(appointment.endTime).subtract(3, "hours").toISOString() : appointment.endTime
   }));
 }
-async function getPatientAppointments(patientId, status) {
-  const where = { patientId };
+async function getPatientAppointments(patientId, organizationId2, status) {
+  const whereClause = {
+    patientId
+  };
+  if (organizationId2) {
+    whereClause.organizationId = organizationId2;
+  }
   if (status) {
-    where.status = status;
+    whereClause.status = status;
   }
   const appointments = await prisma.appointment.findMany({
-    where,
+    where: whereClause,
     select: selectAppointmentWithUsers,
-    orderBy: {
-      startTime: "desc"
-    }
+    orderBy: { startTime: "desc" }
   });
   return adjustAppointmentTimes(appointments);
 }
-async function getDoctorAppointments(doctorId, startDate, endDate) {
-  const where = { doctorId };
+async function getProfessionalAppointments(professionalId, organizationId2, startDate, endDate) {
+  const whereClause = {
+    professionalId
+  };
+  if (organizationId2) {
+    whereClause.organizationId = organizationId2;
+  }
   if (startDate && endDate) {
-    where.startTime = {
+    whereClause.startTime = {
       gte: startDate,
       lte: endDate
     };
   }
   const appointments = await prisma.appointment.findMany({
-    where,
+    where: whereClause,
     select: selectAppointmentWithUsers,
-    orderBy: {
-      startTime: "asc"
-    }
+    orderBy: { startTime: "asc" }
   });
   return adjustAppointmentTimes(appointments);
 }
@@ -19160,7 +19216,7 @@ async function updateAppointmentStatus(appointmentId, status, userId, userRole) 
     where: { id: appointmentId },
     include: {
       patient: true,
-      doctor: true
+      professional: true
     }
   });
   if (!appointment) {
@@ -19171,7 +19227,7 @@ async function updateAppointmentStatus(appointmentId, status, userId, userRole) 
       "Voc\xEA n\xE3o tem permiss\xE3o para alterar este agendamento"
     );
   }
-  if (userRole === "doctor" && appointment.doctorId !== userId) {
+  if (userRole === "professional" && appointment.professionalId !== userId) {
     throw new Unauthorized(
       "Voc\xEA n\xE3o tem permiss\xE3o para alterar este agendamento"
     );
@@ -19205,36 +19261,41 @@ async function updateAppointmentStatus(appointmentId, status, userId, userRole) 
   }
   return updatedAppointment;
 }
-async function createDoctorAvailability(doctorId, availability) {
-  const existing = await prisma.availability.findFirst({
+async function createProfessionalAvailability(professionalId, organizationId2, availability) {
+  const existingAvailability = await prisma.availability.findUnique({
     where: {
-      doctorId,
-      dayOfWeek: availability.dayOfWeek,
-      isActive: true
+      professionalId_organizationId_dayOfWeek_startTime: {
+        professionalId,
+        organizationId: organizationId2,
+        dayOfWeek: availability.dayOfWeek,
+        startTime: availability.startTime
+      }
     }
   });
-  if (existing) {
+  if (existingAvailability) {
     throw new BadRequest(
-      "J\xE1 existe disponibilidade configurada para este dia da semana"
+      "J\xE1 existe disponibilidade configurada para este hor\xE1rio"
     );
   }
-  const created = await prisma.availability.create({
+  const newAvailability = await prisma.availability.create({
     data: {
-      doctorId,
+      professionalId,
+      organizationId: organizationId2,
       dayOfWeek: availability.dayOfWeek,
       startTime: availability.startTime,
       endTime: availability.endTime,
       isActive: true
     }
   });
-  return created;
+  return newAvailability;
 }
-async function getDoctorAvailability(doctorId) {
+async function getProfessionalAvailability(professionalId, organizationId2) {
+  const whereClause = { professionalId };
+  if (organizationId2) {
+    whereClause.organizationId = organizationId2;
+  }
   const availabilities = await prisma.availability.findMany({
-    where: {
-      doctorId,
-      isActive: true
-    },
+    where: whereClause,
     orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }]
   });
   return availabilities;
@@ -19281,7 +19342,12 @@ async function getMyAppointments(request, reply) {
     const { startDate, endDate } = request.query;
     const start = startDate ? new Date(startDate) : void 0;
     const end = endDate ? new Date(endDate) : void 0;
-    appointments = await getDoctorAppointments(userId, start, end);
+    appointments = await getProfessionalAppointments(
+      userId,
+      void 0,
+      start,
+      end
+    );
   } else {
     appointments = await getPatientAppointments(userId, status);
   }
@@ -19315,7 +19381,11 @@ async function postAvailability(request, reply) {
       });
     }
     const availability = request.body;
-    const created = await createDoctorAvailability(doctorId, availability);
+    const created = await createProfessionalAvailability(
+      doctorId,
+      organizationId,
+      availability
+    );
     return reply.status(201).send({
       status: "success",
       data: created
@@ -19335,7 +19405,7 @@ async function postAvailability(request, reply) {
 }
 async function getAvailability(request, reply) {
   const { doctorId } = request.params;
-  const availabilities = await getDoctorAvailability(doctorId);
+  const availabilities = await getProfessionalAvailability(doctorId);
   return reply.status(200).send({
     status: "success",
     data: availabilities
@@ -19352,7 +19422,7 @@ async function getTodayAppointments(request, reply) {
   const today = (0, import_moment_timezone3.default)().tz("America/Sao_Paulo");
   const startOfDay = today.clone().startOf("day").toDate();
   const endOfDay = today.clone().endOf("day").toDate();
-  const appointments = await getDoctorAppointments(
+  const appointments = await getProfessionalAppointments(
     doctorId,
     startOfDay,
     endOfDay

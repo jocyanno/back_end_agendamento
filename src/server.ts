@@ -13,6 +13,8 @@ import { errorHandler } from "@/error-handler";
 import { usuarioRoutes } from "@/routes/user/usuarioRoutes";
 import { appointmentRoutes } from "@/routes/appointment/appointmentRoutes";
 import { attendanceRoutes } from "@/routes/attendance/attendanceRoutes";
+import { organizationRoutes } from "@/routes/organization/organizationRoutes";
+import { patientCIDRoutes } from "@/routes/patientCID/patientCIDRoutes";
 
 const app = fastify({
   logger: false,
@@ -96,6 +98,8 @@ app.addHook("preSerialization", async (request, reply, payload) => {
 app.register(usuarioRoutes);
 app.register(appointmentRoutes);
 app.register(attendanceRoutes);
+app.register(organizationRoutes);
+app.register(patientCIDRoutes);
 
 app.setErrorHandler(errorHandler);
 

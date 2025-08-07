@@ -31,7 +31,7 @@ var import_cors = __toESM(require("@fastify/cors"));
 var import_jwt = __toESM(require("@fastify/jwt"));
 
 // src/error-handler.ts
-var import_v4 = require("zod/v4");
+var import_zod = require("zod");
 
 // src/_errors/bad-request.ts
 var BadRequest = class extends Error {
@@ -59,7 +59,7 @@ var Unauthorized = class extends Error {
 
 // src/error-handler.ts
 function errorHandler(error, request, reply) {
-  if (error instanceof import_v4.ZodError) {
+  if (error instanceof import_zod.ZodError) {
     return reply.status(400).send({
       status: "error",
       message: "Validation error",
@@ -122,6 +122,9 @@ function errorHandler(error, request, reply) {
   });
 }
 
+// src/controllers/usuarioController.ts
+var import_client2 = require("@prisma/client");
+
 // src/lib/prisma.ts
 var import_client = require("@prisma/client");
 var prisma = new import_client.PrismaClient();
@@ -144,11 +147,27 @@ var selectUsuario = {
   state: true,
   zipCode: true,
   country: true,
-  cid: true,
-  register: true,
   createdAt: true,
   updatedAt: true
 };
+function serializeUser(user) {
+  return {
+    ...user,
+    birthDate: user.birthDate ? user.birthDate.toISOString() : null,
+    createdAt: user.createdAt ? user.createdAt.toISOString() : null,
+    updatedAt: user.updatedAt ? user.updatedAt.toISOString() : null
+  };
+}
+function serializeUserOrganizations(userOrganizations) {
+  return userOrganizations.map((uo) => ({
+    organizationId: uo.organization.id,
+    role: uo.role,
+    organizationName: uo.organization.name,
+    joinedAt: uo.joinedAt ? uo.joinedAt.toISOString() : null,
+    createdAt: uo.createdAt ? uo.createdAt.toISOString() : null,
+    updatedAt: uo.updatedAt ? uo.updatedAt.toISOString() : null
+  }));
+}
 async function authenticateUser(email, password, fastify2) {
   const user = await prisma.users.findUnique({
     where: { email },
@@ -161,42 +180,139 @@ async function authenticateUser(email, password, fastify2) {
     throw new Unauthorized("Invalid credentials");
   }
   const { password: _, ...userWithoutPassword } = user;
+  const userOrganizations = await prisma.userOrganization.findMany({
+    where: { userId: user.id, isActive: true },
+    include: {
+      organization: {
+        select: {
+          id: true,
+          name: true
+        }
+      }
+    },
+    orderBy: { createdAt: "asc" }
+  });
+  let primaryRole = "member";
+  let primaryOrganizationId = null;
+  if (userOrganizations.length > 0) {
+    const rolePriority = {
+      owner: 6,
+      admin: 5,
+      professional: 4,
+      attendant: 3,
+      patient: 2,
+      member: 1
+    };
+    let highestPriority = 0;
+    for (const userOrg of userOrganizations) {
+      const priority = rolePriority[userOrg.role] || 0;
+      if (priority > highestPriority) {
+        highestPriority = priority;
+        primaryRole = userOrg.role;
+        primaryOrganizationId = userOrg.organization.id;
+      }
+    }
+  }
   const token = await fastify2.jwt.sign(
-    { userId: user.id, register: user.register },
+    {
+      userId: user.id,
+      primaryRole,
+      primaryOrganizationId,
+      userOrganizations: serializeUserOrganizations(userOrganizations)
+    },
     { expiresIn: "7d" }
   );
   return {
     token,
-    usuario: userWithoutPassword
+    usuario: {
+      ...serializeUser(userWithoutPassword),
+      primaryRole,
+      primaryOrganizationId,
+      organizations: userOrganizations.map((uo) => ({
+        id: uo.organization.id,
+        name: uo.organization.name,
+        role: uo.role
+      }))
+    }
   };
 }
 async function searchUsuario(usuarioId) {
-  const searchUserExisting = await prisma.users.findUnique({
+  const user = await prisma.users.findUnique({
     where: {
       id: usuarioId
     },
-    select: selectUsuario
+    include: {
+      userOrganizations: {
+        where: { isActive: true },
+        include: {
+          organization: {
+            select: {
+              id: true,
+              name: true
+            }
+          }
+        },
+        orderBy: { createdAt: "asc" }
+      }
+    }
   });
-  if (!searchUserExisting) {
+  if (!user) {
     throw new NotFound("User not found");
   }
-  return searchUserExisting;
+  let primaryRole = "member";
+  let primaryOrganizationId = null;
+  const organizations = [];
+  if (user.userOrganizations.length > 0) {
+    const rolePriority = {
+      owner: 6,
+      admin: 5,
+      professional: 4,
+      attendant: 3,
+      patient: 2,
+      member: 1
+    };
+    let highestPriority = 0;
+    for (const userOrg of user.userOrganizations) {
+      const priority = rolePriority[userOrg.role] || 0;
+      if (priority > highestPriority) {
+        highestPriority = priority;
+        primaryRole = userOrg.role;
+        primaryOrganizationId = userOrg.organizationId;
+      }
+      organizations.push({
+        organizationId: userOrg.organizationId,
+        role: userOrg.role,
+        organizationName: userOrg.organization.name,
+        joinedAt: userOrg.joinedAt ? userOrg.joinedAt.toISOString() : null,
+        createdAt: userOrg.createdAt ? userOrg.createdAt.toISOString() : null,
+        updatedAt: userOrg.updatedAt ? userOrg.updatedAt.toISOString() : null
+      });
+    }
+  }
+  return {
+    ...serializeUser(user),
+    primaryRole,
+    primaryOrganizationId,
+    organizations
+  };
 }
 var getUsuarioLogado = async (request) => {
   const usuarioId = request.usuario.id;
   return searchUsuario(usuarioId);
 };
 var getUsuarioLogadoIsAdmin = async (request) => {
-  const { id: usuarioId, register } = request.usuario;
-  if (register !== "doctor") {
-    throw new Unauthorized("User is not doctor");
+  const { id: usuarioId, primaryRole } = request.usuario;
+  const allowedRoles = ["professional", "admin", "owner"];
+  if (!allowedRoles.includes(primaryRole)) {
+    throw new Unauthorized("User is not authorized");
   }
   return searchUsuario(usuarioId);
 };
 var getUsuarioLogadoIsAdminOrAttendant = async (request) => {
-  const { id: usuarioId, register } = request.usuario;
-  if (register !== "doctor" && register !== "attendant") {
-    throw new Unauthorized("User is not doctor");
+  const { id: usuarioId, primaryRole } = request.usuario;
+  const allowedRoles = ["professional", "admin", "owner", "attendant"];
+  if (!allowedRoles.includes(primaryRole)) {
+    throw new Unauthorized("User is not authorized");
   }
   return searchUsuario(usuarioId);
 };
@@ -210,41 +326,41 @@ async function getUserById(usuarioId) {
   if (!user) {
     throw new NotFound("User not found");
   }
-  return user;
+  return serializeUser(user);
 }
 async function getUserExisting({
   email,
   cpf
 }) {
-  let user = null;
+  console.log("=== VALIDANDO EMAIL E CPF ===");
+  console.log("Email:", email);
+  console.log("CPF:", cpf);
   if (email) {
-    user = await prisma.users.findUnique({
-      where: {
-        email
-      },
-      select: selectUsuario
+    const existingUserByEmail = await prisma.users.findUnique({
+      where: { email },
+      select: { id: true, email: true }
     });
-    if (user) {
-      throw new BadRequest("User already exists");
+    if (existingUserByEmail) {
+      console.log("Email j\xE1 existe:", email);
+      throw new BadRequest(`Email ${email} j\xE1 est\xE1 em uso`);
     }
   }
   if (cpf) {
-    user = await prisma.users.findUnique({
-      where: {
-        cpf
-      },
-      select: selectUsuario
+    const existingUserByCpf = await prisma.users.findUnique({
+      where: { cpf },
+      select: { id: true, cpf: true }
     });
-    if (user) {
-      throw new BadRequest("User already exists");
+    if (existingUserByCpf) {
+      console.log("CPF j\xE1 existe:", cpf);
+      throw new BadRequest(`CPF ${cpf} j\xE1 est\xE1 em uso`);
     }
   }
+  console.log("Email e CPF dispon\xEDveis para uso");
   return;
 }
 async function createUser(data) {
-  if (data.register === "doctor") {
-    throw new BadRequest("Register doctor is not allowed");
-  }
+  console.log("=== CREATE USER ===");
+  console.log("Dados recebidos:", JSON.stringify(data, null, 2));
   if (!data.password) {
     throw new BadRequest("Password is required");
   }
@@ -257,9 +373,17 @@ async function createUser(data) {
     },
     select: selectUsuario
   });
-  return user;
+  console.log("Usu\xE1rio criado com sucesso:", user.email);
+  return {
+    ...serializeUser(user),
+    primaryRole: "member",
+    primaryOrganizationId: null,
+    organizations: []
+  };
 }
 async function createUserAdmin(data) {
+  console.log("=== CREATE USER ADMIN ===");
+  console.log("Dados recebidos:", JSON.stringify(data, null, 2));
   if (!data.password) {
     throw new BadRequest("Password is required");
   }
@@ -272,54 +396,109 @@ async function createUserAdmin(data) {
     },
     select: selectUsuario
   });
-  return user;
+  console.log("Usu\xE1rio criado com sucesso:", user.email);
+  return {
+    ...serializeUser(user),
+    primaryRole: "member",
+    primaryOrganizationId: null,
+    organizations: []
+  };
 }
 async function updateUser(usuarioId, data) {
-  const { cid, ...allowedData } = data;
-  const searchUser = await prisma.users.findUnique({
-    where: {
-      id: usuarioId
-    },
-    select: selectUsuario
-  });
-  if (!searchUser) {
-    throw new NotFound("User not found");
-  }
-  if (allowedData.email && allowedData.email !== searchUser.email) {
-    if (typeof allowedData.email === "string") {
-      const existingUser = await prisma.users.findUnique({
-        where: { email: allowedData.email },
-        select: { id: true }
-      });
-      if (existingUser && existingUser.id !== usuarioId) {
-        throw new BadRequest("User already exists");
-      }
-    }
-  }
-  if (allowedData.cpf && allowedData.cpf !== searchUser.cpf) {
-    if (typeof allowedData.cpf === "string") {
-      const existingUser = await prisma.users.findUnique({
-        where: { cpf: allowedData.cpf },
-        select: { id: true }
-      });
-      if (existingUser && existingUser.id !== usuarioId) {
-        throw new BadRequest("User already exists");
-      }
-    }
-  }
-  if (allowedData.password) {
-    allowedData.password = await import_bcrypt.default.hash(
-      allowedData.password,
-      10
-    );
-  }
-  if (allowedData.birthDate && typeof allowedData.birthDate === "string") {
-    allowedData.birthDate = new Date(allowedData.birthDate);
-  }
-  const dadosLimpos = Object.fromEntries(
-    Object.entries(allowedData).filter(([_, value]) => value !== null)
-  );
   try {
+    console.log("=== UPDATE USER SERVICE ===");
+    console.log("UsuarioId:", usuarioId);
+    console.log("Dados recebidos:", JSON.stringify(data, null, 2));
+    const allowedData = data;
+    const searchUser = await prisma.users.findUnique({
+      where: {
+        id: usuarioId
+      },
+      select: selectUsuario
+    });
+    console.log("Usu\xE1rio encontrado:", searchUser ? "Sim" : "N\xE3o");
+    if (!searchUser) {
+      throw new NotFound("User not found");
+    }
+    if (allowedData.email && allowedData.email !== searchUser.email) {
+      if (typeof allowedData.email === "string") {
+        const existingUser = await prisma.users.findUnique({
+          where: { email: allowedData.email },
+          select: { id: true }
+        });
+        if (existingUser && existingUser.id !== usuarioId) {
+          throw new BadRequest("User already exists");
+        }
+      }
+    }
+    if (allowedData.cpf && allowedData.cpf !== searchUser.cpf) {
+      if (typeof allowedData.cpf === "string") {
+        const existingUser = await prisma.users.findUnique({
+          where: { cpf: allowedData.cpf },
+          select: { id: true }
+        });
+        if (existingUser && existingUser.id !== usuarioId) {
+          throw new BadRequest("User already exists");
+        }
+      }
+    }
+    if (allowedData.password) {
+      console.log("Criptografando senha...");
+      allowedData.password = await import_bcrypt.default.hash(
+        allowedData.password,
+        10
+      );
+    }
+    if (allowedData.birthDate && typeof allowedData.birthDate === "string") {
+      console.log("Convertendo birthDate para Date...");
+      allowedData.birthDate = new Date(allowedData.birthDate);
+    }
+    const dadosLimpos = Object.fromEntries(
+      Object.entries(allowedData).filter(
+        ([_, value]) => value !== null && value !== void 0
+      )
+    );
+    console.log(
+      "Dados limpos para atualiza\xE7\xE3o:",
+      JSON.stringify(dadosLimpos, null, 2)
+    );
+    if (dadosLimpos.numberOfAddress === "" || dadosLimpos.numberOfAddress === null) {
+      console.log("Removendo numberOfAddress vazio...");
+      delete dadosLimpos.numberOfAddress;
+    }
+    const camposEndereco = [
+      "address",
+      "city",
+      "state",
+      "zipCode",
+      "country",
+      "complement"
+    ];
+    camposEndereco.forEach((campo) => {
+      if (dadosLimpos[campo] === "" || dadosLimpos[campo] === null) {
+        console.log(`Removendo ${campo} vazio...`);
+        delete dadosLimpos[campo];
+      }
+    });
+    const camposProblema = Object.entries(dadosLimpos).filter(
+      ([key, value]) => {
+        if (value === "" || value === "null" || value === "undefined") {
+          console.log(`Campo problem\xE1tico encontrado: ${key} = ${value}`);
+          return true;
+        }
+        return false;
+      }
+    );
+    if (camposProblema.length > 0) {
+      console.log("Removendo campos com valores vazios ou inv\xE1lidos...");
+      camposProblema.forEach(([key, value]) => {
+        delete dadosLimpos[key];
+      });
+    }
+    console.log(
+      "Dados finais para atualiza\xE7\xE3o:",
+      JSON.stringify(dadosLimpos, null, 2)
+    );
     const usuarioAtualizado = await prisma.users.update({
       where: { id: usuarioId },
       data: {
@@ -327,8 +506,55 @@ async function updateUser(usuarioId, data) {
       },
       select: selectUsuario
     });
-    return usuarioAtualizado;
+    console.log("Usu\xE1rio atualizado com sucesso no banco");
+    const userOrganizations = await prisma.userOrganization.findMany({
+      where: { userId: usuarioId, isActive: true },
+      include: {
+        organization: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
+      },
+      orderBy: { createdAt: "asc" }
+    });
+    let primaryRole = "member";
+    let primaryOrganizationId = null;
+    if (userOrganizations.length > 0) {
+      const rolePriority = {
+        owner: 6,
+        admin: 5,
+        professional: 4,
+        attendant: 3,
+        patient: 2,
+        member: 1
+      };
+      let highestPriority = 0;
+      for (const userOrg of userOrganizations) {
+        const priority = rolePriority[userOrg.role] || 0;
+        if (priority > highestPriority) {
+          highestPriority = priority;
+          primaryRole = userOrg.role;
+          primaryOrganizationId = userOrg.organizationId;
+        }
+      }
+    }
+    const organizations = userOrganizations.map((uo) => ({
+      id: uo.organization.id,
+      name: uo.organization.name,
+      role: uo.role
+    }));
+    return {
+      ...serializeUser(usuarioAtualizado),
+      primaryRole,
+      primaryOrganizationId,
+      organizations
+    };
   } catch (err) {
+    console.error("Erro na fun\xE7\xE3o updateUser:", err);
+    console.error("C\xF3digo do erro:", err.code);
+    console.error("Mensagem do erro:", err.message);
     if (err.code === "P2002") {
       throw new BadRequest("User already exists");
     }
@@ -336,45 +562,65 @@ async function updateUser(usuarioId, data) {
   }
 }
 async function getAllUsers() {
-  const users = await prisma.users.findMany({
-    where: {
-      OR: [
-        { register: "patient" },
-        { register: "parents" }
-      ]
-    },
-    select: selectUsuario,
-    orderBy: [
-      { name: "asc" }
-    ]
-  });
-  return users;
+  try {
+    const users = await prisma.users.findMany({
+      select: selectUsuario,
+      orderBy: [{ name: "asc" }]
+    });
+    const usersWithOrganizations = await Promise.all(
+      users.map(async (user) => {
+        const userOrganizations = await prisma.userOrganization.findMany({
+          where: { userId: user.id, isActive: true },
+          include: {
+            organization: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
+          },
+          orderBy: { createdAt: "asc" }
+        });
+        let primaryRole = "member";
+        let primaryOrganizationId = null;
+        if (userOrganizations.length > 0) {
+          const rolePriority = {
+            owner: 6,
+            admin: 5,
+            professional: 4,
+            attendant: 3,
+            patient: 2,
+            member: 1
+          };
+          let highestPriority = 0;
+          for (const userOrg of userOrganizations) {
+            const priority = rolePriority[userOrg.role] || 0;
+            if (priority > highestPriority) {
+              highestPriority = priority;
+              primaryRole = userOrg.role;
+              primaryOrganizationId = userOrg.organization.id;
+            }
+          }
+        }
+        return {
+          ...serializeUser(user),
+          primaryRole,
+          primaryOrganizationId,
+          organizations: userOrganizations.map((uo) => ({
+            id: uo.organization.id,
+            name: uo.organization.name,
+            role: uo.role
+          }))
+        };
+      })
+    );
+    return usersWithOrganizations;
+  } catch (error) {
+    console.error("Erro em getAllUsers:", error);
+    throw error;
+  }
 }
-async function getAllDoctors() {
-  const doctors = await prisma.users.findMany({
-    where: {
-      register: "doctor"
-    },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      image: true,
-      phone: true,
-      address: true,
-      city: true,
-      state: true,
-      cid: true,
-      register: true,
-      createdAt: true
-    },
-    orderBy: {
-      name: "asc"
-    }
-  });
-  return doctors;
-}
-async function updateUserByDoctor(targetUserId, data) {
+async function updateUserByProfessional(targetUserId, data) {
   const searchUser = await prisma.users.findUnique({
     where: {
       id: targetUserId
@@ -423,7 +669,7 @@ async function updateUserByDoctor(targetUserId, data) {
       },
       select: selectUsuario
     });
-    return usuarioAtualizado;
+    return serializeUser(usuarioAtualizado);
   } catch (err) {
     if (err.code === "P2002") {
       throw new BadRequest("User already exists");
@@ -451,8 +697,215 @@ async function deleteUser(usuarioId, adminId) {
   });
   return { message: "User deleted successfully" };
 }
+async function addUserToOrganization(userId, organizationId2, role) {
+  const user = await prisma.users.findUnique({
+    where: { id: userId },
+    select: { id: true }
+  });
+  if (!user) {
+    throw new NotFound("User not found");
+  }
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId2 },
+    select: { id: true }
+  });
+  if (!organization) {
+    throw new NotFound("Organization not found");
+  }
+  const existingAssociation = await prisma.userOrganization.findFirst({
+    where: {
+      userId,
+      organizationId: organizationId2,
+      isActive: true
+    }
+  });
+  if (existingAssociation) {
+    throw new BadRequest("User is already associated with this organization");
+  }
+  const userOrganization = await prisma.userOrganization.create({
+    data: {
+      userId,
+      organizationId: organizationId2,
+      role,
+      isActive: true
+    },
+    include: {
+      organization: {
+        select: {
+          id: true,
+          name: true
+        }
+      }
+    }
+  });
+  return userOrganization;
+}
+async function getUsersFromCurrentOrganization(organizationId2) {
+  try {
+    const users = await prisma.users.findMany({
+      where: {
+        userOrganizations: {
+          some: {
+            organizationId: organizationId2,
+            isActive: true
+          }
+        }
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        cpf: true,
+        phone: true,
+        birthDate: true,
+        address: true,
+        numberOfAddress: true,
+        complement: true,
+        city: true,
+        state: true,
+        zipCode: true,
+        country: true,
+        createdAt: true,
+        updatedAt: true,
+        userOrganizations: {
+          where: {
+            organizationId: organizationId2,
+            isActive: true
+          },
+          select: {
+            role: true,
+            joinedAt: true,
+            isActive: true
+          }
+        }
+      }
+    });
+    return users.map((user) => {
+      const userOrg = user.userOrganizations[0];
+      return {
+        ...user,
+        primaryRole: userOrg?.role || null,
+        primaryOrganizationId: organizationId2,
+        organizations: userOrg ? [
+          {
+            id: organizationId2,
+            role: userOrg.role,
+            joinedAt: userOrg.joinedAt,
+            isActive: userOrg.isActive
+          }
+        ] : []
+      };
+    });
+  } catch (error) {
+    console.error("Erro em getUsersFromCurrentOrganization:", error);
+    throw error;
+  }
+}
+async function removeUserFromOrganization(userId, organizationId2) {
+  const user = await prisma.users.findUnique({
+    where: { id: userId },
+    select: { id: true }
+  });
+  if (!user) {
+    throw new NotFound("User not found");
+  }
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId2 },
+    select: { id: true }
+  });
+  if (!organization) {
+    throw new NotFound("Organization not found");
+  }
+  const existingAssociation = await prisma.userOrganization.findFirst({
+    where: {
+      userId,
+      organizationId: organizationId2,
+      isActive: true
+    }
+  });
+  if (!existingAssociation) {
+    throw new BadRequest("User is not associated with this organization");
+  }
+  const userOrganization = await prisma.userOrganization.update({
+    where: {
+      id: existingAssociation.id
+    },
+    data: {
+      isActive: false
+    },
+    include: {
+      organization: {
+        select: {
+          id: true,
+          name: true
+        }
+      }
+    }
+  });
+  return userOrganization;
+}
+async function getAllUsersFromSystem() {
+  try {
+    const users = await prisma.users.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        cpf: true,
+        phone: true,
+        birthDate: true,
+        address: true,
+        numberOfAddress: true,
+        complement: true,
+        city: true,
+        state: true,
+        zipCode: true,
+        country: true,
+        createdAt: true,
+        updatedAt: true,
+        userOrganizations: {
+          where: {
+            isActive: true
+          },
+          select: {
+            role: true,
+            organizationId: true,
+            joinedAt: true,
+            organization: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: {
+        createdAt: "desc"
+      }
+    });
+    return users.map((user) => {
+      const primaryOrg = user.userOrganizations[0];
+      return {
+        ...user,
+        primaryRole: primaryOrg?.role || null,
+        primaryOrganizationId: primaryOrg?.organizationId || null,
+        organizations: user.userOrganizations.map((org) => ({
+          id: org.organizationId,
+          name: org.organization.name,
+          role: org.role,
+          joinedAt: org.joinedAt
+        }))
+      };
+    });
+  } catch (error) {
+    console.error("Erro em getAllUsersFromSystem:", error);
+    throw error;
+  }
+}
 
 // src/controllers/usuarioController.ts
+var prisma2 = new import_client2.PrismaClient();
 async function getUsuario(request, reply) {
   const usuario = await getUsuarioLogado(request);
   return reply.status(200).send({
@@ -496,13 +949,15 @@ async function createUsuario(request, reply) {
     console.log("Body:", request.body);
     const parseResult = request.body;
     console.log("Dados recebidos:", JSON.stringify(parseResult, null, 2));
+    console.log("userType recebido:", parseResult.userType);
+    console.log("organizationId recebido:", parseResult.organizationId);
     await getUserExisting({
       email: parseResult.email,
       cpf: parseResult.cpf
     });
     const createUsuario2 = await createUser(parseResult);
     const token = request.server.jwt.sign(
-      { userId: createUsuario2.id, register: createUsuario2.register },
+      { userId: createUsuario2.id },
       { expiresIn: "7d" }
     );
     console.log("Usu\xE1rio criado com sucesso:", createUsuario2.email);
@@ -519,46 +974,148 @@ async function createUsuario(request, reply) {
   }
 }
 async function createUsuarioAdmin(request, reply) {
-  const admin = await getUsuarioLogadoIsAdmin(request);
-  const parseResult = request.body;
-  console.log("Dados recebidos:", JSON.stringify(parseResult, null, 2));
-  await getUserExisting({
-    email: parseResult.email,
-    cpf: parseResult.cpf
-  });
-  const createUsuario2 = await createUserAdmin(parseResult);
-  const token = request.server.jwt.sign(
-    { userId: createUsuario2.id, register: createUsuario2.register },
-    { expiresIn: "7d" }
-  );
-  return reply.status(200).send({
-    status: "success",
-    data: { token, usuario: createUsuario2 }
-  });
+  try {
+    console.log("=== CREATE USER ADMIN ATTEMPT ===");
+    console.log("Headers:", request.headers);
+    console.log("Body:", request.body);
+    const admin = await getUsuarioLogadoIsAdmin(request);
+    console.log("Admin logado:", admin.id);
+    console.log("Admin primaryOrganizationId:", admin.primaryOrganizationId);
+    console.log("Admin primaryRole:", admin.primaryRole);
+    console.log("Admin organizations:", admin.organizations);
+    const parseResult = request.body;
+    console.log("Dados recebidos:", JSON.stringify(parseResult, null, 2));
+    console.log("userType recebido:", parseResult.userType);
+    console.log("organizationId recebido:", parseResult.organizationId);
+    console.log("Validando email e CPF...");
+    await getUserExisting({
+      email: parseResult.email,
+      cpf: parseResult.cpf
+    });
+    console.log("Email e CPF v\xE1lidos");
+    const createUsuario2 = await createUserAdmin(parseResult);
+    console.log("Usu\xE1rio criado:", createUsuario2.id);
+    let targetOrganizationId = parseResult.organizationId;
+    let userRole = parseResult.userType || "patient";
+    if (!targetOrganizationId) {
+      targetOrganizationId = admin.primaryOrganizationId;
+      console.log(
+        "Usando organiza\xE7\xE3o prim\xE1ria do admin:",
+        targetOrganizationId
+      );
+    }
+    if (!targetOrganizationId) {
+      console.log("Nenhuma organiza\xE7\xE3o dispon\xEDvel para vincular o usu\xE1rio");
+      console.log("Admin n\xE3o tem organiza\xE7\xE3o prim\xE1ria definida");
+    } else {
+      console.log("Adicionando usu\xE1rio \xE0 organiza\xE7\xE3o:", targetOrganizationId);
+      let role;
+      switch (userRole) {
+        case "patient":
+          role = "patient";
+          break;
+        case "professional":
+          role = "professional";
+          break;
+        case "parent":
+          role = "patient";
+          break;
+        default:
+          role = "patient";
+      }
+      console.log("Role determinado:", role);
+      await prisma2.userOrganization.create({
+        data: {
+          userId: createUsuario2.id,
+          organizationId: targetOrganizationId,
+          role
+        }
+      });
+      console.log("Usu\xE1rio adicionado \xE0 organiza\xE7\xE3o com sucesso");
+    }
+    const token = request.server.jwt.sign(
+      { userId: createUsuario2.id },
+      { expiresIn: "7d" }
+    );
+    console.log("Token gerado com sucesso");
+    return reply.status(200).send({
+      status: "success",
+      data: { token, usuario: createUsuario2 }
+    });
+  } catch (error) {
+    console.error("Erro em createUsuarioAdmin:", error);
+    if (error instanceof Error) {
+      return reply.status(400).send({
+        status: "error",
+        message: error.message
+      });
+    }
+    return reply.status(500).send({
+      status: "error",
+      message: "Internal server error"
+    });
+  }
 }
 async function updateUsuario(request, reply) {
-  const usuario = await getUsuarioLogado(request);
-  const parseResult = request.body;
-  const updateUsuario2 = await updateUser(usuario.id, parseResult);
-  return reply.code(200).send({
-    status: "success",
-    data: updateUsuario2
-  });
+  try {
+    console.log("=== UPDATE USER ATTEMPT ===");
+    console.log("Headers:", request.headers);
+    console.log("Body:", request.body);
+    const usuario = await getUsuarioLogado(request);
+    console.log("Usu\xE1rio logado:", usuario.id);
+    const parseResult = request.body;
+    console.log(
+      "Dados para atualiza\xE7\xE3o:",
+      JSON.stringify(parseResult, null, 2)
+    );
+    const updateUsuario2 = await updateUser(usuario.id, parseResult);
+    console.log("Usu\xE1rio atualizado com sucesso");
+    return reply.code(200).send({
+      status: "success",
+      data: updateUsuario2
+    });
+  } catch (error) {
+    console.error("Erro ao atualizar usu\xE1rio:", error);
+    if (error instanceof Error) {
+      return reply.status(500).send({
+        status: "error",
+        message: error.message
+      });
+    }
+    return reply.status(500).send({
+      status: "error",
+      message: "Internal server error"
+    });
+  }
 }
-async function getDoctors(request, reply) {
-  const doctors = await getAllDoctors();
+async function getProfessionals(request, reply) {
+  const professionals = await getAllProfessionals();
   return reply.status(200).send({
     status: "success",
-    data: doctors
+    data: professionals
   });
 }
 async function getAllUsuarios(request, reply) {
-  await getUsuarioLogadoIsAdminOrAttendant(request);
-  const users = await getAllUsers();
-  return reply.status(200).send({
-    status: "success",
-    data: users
-  });
+  try {
+    await getUsuarioLogadoIsAdminOrAttendant(request);
+    const users = await getAllUsers();
+    return reply.status(200).send({
+      status: "success",
+      data: users
+    });
+  } catch (error) {
+    console.error("Erro em getAllUsuarios:", error);
+    if (error instanceof Error) {
+      return reply.status(500).send({
+        status: "error",
+        message: error.message
+      });
+    }
+    return reply.status(500).send({
+      status: "error",
+      message: "Internal server error"
+    });
+  }
 }
 async function getUsuarioById(request, reply) {
   await getUsuarioLogadoIsAdmin(request);
@@ -573,7 +1130,7 @@ async function updateUsuarioByDoctor(request, reply) {
   await getUsuarioLogadoIsAdmin(request);
   const { id } = request.params;
   const parseResult = request.body;
-  const updateUsuario2 = await updateUserByDoctor(id, parseResult);
+  const updateUsuario2 = await updateUserByProfessional(id, parseResult);
   return reply.status(200).send({
     status: "success",
     data: updateUsuario2
@@ -588,9 +1145,274 @@ async function deleteUsuario(request, reply) {
     data: result
   });
 }
+async function addUserToOrganizationController(request, reply) {
+  try {
+    await getUsuarioLogadoIsAdmin(request);
+    const { userId, organizationId: organizationId2, role } = request.body;
+    let finalRole;
+    switch (role) {
+      case "patient":
+        finalRole = "patient";
+        break;
+      case "professional":
+        finalRole = "professional";
+        break;
+      case "parent":
+        finalRole = "patient";
+        break;
+      default:
+        finalRole = "patient";
+    }
+    const userOrganization = await addUserToOrganization(
+      userId,
+      organizationId2,
+      finalRole
+    );
+    return reply.status(200).send({
+      status: "success",
+      data: userOrganization
+    });
+  } catch (error) {
+    console.error("Erro ao adicionar usu\xE1rio \xE0 organiza\xE7\xE3o:", error);
+    if (error instanceof Error) {
+      return reply.status(400).send({
+        status: "error",
+        message: error.message
+      });
+    }
+    return reply.status(500).send({
+      status: "error",
+      message: "Internal server error"
+    });
+  }
+}
+async function getUserOrganizationsController(request, reply) {
+  try {
+    const loggedUser = await getUsuarioLogado(request);
+    const { userId } = request.params;
+    if (loggedUser.id !== userId) {
+      return reply.status(403).send({
+        status: "error",
+        message: "Acesso negado. Voc\xEA s\xF3 pode ver suas pr\xF3prias organiza\xE7\xF5es."
+      });
+    }
+    const userOrganizations = await prisma2.userOrganization.findMany({
+      where: {
+        userId,
+        isActive: true
+      },
+      include: {
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            description: true
+          }
+        }
+      },
+      orderBy: { createdAt: "asc" }
+    });
+    const formattedOrganizations = userOrganizations.map((uo) => ({
+      id: uo.id,
+      userId: uo.userId,
+      organizationId: uo.organizationId,
+      role: uo.role,
+      isActive: uo.isActive,
+      joinedAt: uo.joinedAt.toISOString(),
+      createdAt: uo.createdAt.toISOString(),
+      updatedAt: uo.updatedAt.toISOString(),
+      organization: {
+        id: uo.organization.id,
+        name: uo.organization.name,
+        description: uo.organization.description
+      }
+    }));
+    return reply.status(200).send({
+      status: "success",
+      data: formattedOrganizations
+    });
+  } catch (error) {
+    console.error("Erro em getUserOrganizationsController:", error);
+    if (error instanceof Error) {
+      return reply.status(400).send({
+        status: "error",
+        message: error.message
+      });
+    }
+    return reply.status(500).send({
+      status: "error",
+      message: "Internal server error"
+    });
+  }
+}
+async function getUsersFromCurrentOrganizationController(request, reply) {
+  try {
+    await getUsuarioLogadoIsAdmin(request);
+    const user = await getUsuarioLogado(request);
+    const userOrganization = await prisma2.userOrganization.findFirst({
+      where: {
+        userId: user.id,
+        isActive: true
+      },
+      select: {
+        organizationId: true
+      }
+    });
+    if (!userOrganization?.organizationId) {
+      return reply.status(400).send({
+        status: "error",
+        message: "Usu\xE1rio n\xE3o est\xE1 associado a nenhuma organiza\xE7\xE3o"
+      });
+    }
+    const users = await getUsersFromCurrentOrganization(
+      userOrganization.organizationId
+    );
+    return reply.status(200).send({
+      status: "success",
+      data: users
+    });
+  } catch (error) {
+    console.error("Erro em getUsersFromCurrentOrganizationController:", error);
+    if (error instanceof Error) {
+      return reply.status(400).send({
+        status: "error",
+        message: error.message
+      });
+    }
+    return reply.status(500).send({
+      status: "error",
+      message: "Internal server error"
+    });
+  }
+}
+async function removeUserFromOrganizationController(request, reply) {
+  try {
+    await getUsuarioLogadoIsAdmin(request);
+    const { userId } = request.params;
+    const user = await getUsuarioLogado(request);
+    const userOrganization = await prisma2.userOrganization.findFirst({
+      where: {
+        userId: user.id,
+        isActive: true
+      },
+      select: {
+        organizationId: true
+      }
+    });
+    if (!userOrganization?.organizationId) {
+      return reply.status(400).send({
+        status: "error",
+        message: "Usu\xE1rio n\xE3o est\xE1 associado a nenhuma organiza\xE7\xE3o"
+      });
+    }
+    const userOrganizationResult = await removeUserFromOrganization(
+      userId,
+      userOrganization.organizationId
+    );
+    return reply.status(200).send({
+      status: "success",
+      data: userOrganizationResult
+    });
+  } catch (error) {
+    console.error("Erro em removeUserFromOrganizationController:", error);
+    if (error instanceof Error) {
+      return reply.status(400).send({
+        status: "error",
+        message: error.message
+      });
+    }
+    return reply.status(500).send({
+      status: "error",
+      message: "Internal server error"
+    });
+  }
+}
+async function getAllUsersFromSystemController(request, reply) {
+  try {
+    const user = await getUsuarioLogado(request);
+    const allowedRoles = ["owner", "admin", "member"];
+    if (!user.primaryRole || !allowedRoles.includes(user.primaryRole)) {
+      return reply.status(403).send({
+        status: "error",
+        message: "Acesso negado. Apenas propriet\xE1rios, administradores e membros podem visualizar todos os usu\xE1rios."
+      });
+    }
+    const users = await getAllUsersFromSystem();
+    return reply.status(200).send({
+      status: "success",
+      data: users
+    });
+  } catch (error) {
+    console.error("Erro em getAllUsersFromSystemController:", error);
+    if (error instanceof Error) {
+      return reply.status(400).send({
+        status: "error",
+        message: error.message
+      });
+    }
+    return reply.status(500).send({
+      status: "error",
+      message: "Internal server error"
+    });
+  }
+}
+async function checkEmailAvailability(request, reply) {
+  try {
+    const { email } = request.params;
+    console.log("=== CHECK EMAIL AVAILABILITY ===");
+    console.log("Email:", email);
+    const existingUser = await prisma2.users.findUnique({
+      where: { email },
+      select: { id: true, email: true }
+    });
+    const isAvailable = !existingUser;
+    console.log("Email dispon\xEDvel:", isAvailable);
+    return reply.status(200).send({
+      status: "success",
+      data: {
+        email,
+        isAvailable,
+        message: isAvailable ? "Email dispon\xEDvel" : "Email j\xE1 est\xE1 em uso"
+      }
+    });
+  } catch (error) {
+    console.error("Erro ao verificar disponibilidade do email:", error);
+    return reply.status(500).send({
+      status: "error",
+      message: "Erro ao verificar disponibilidade do email"
+    });
+  }
+}
+async function checkCpfAvailability(request, reply) {
+  try {
+    const { cpf } = request.params;
+    console.log("=== CHECK CPF AVAILABILITY ===");
+    console.log("CPF:", cpf);
+    const existingUser = await prisma2.users.findUnique({
+      where: { cpf },
+      select: { id: true, cpf: true }
+    });
+    const isAvailable = !existingUser;
+    console.log("CPF dispon\xEDvel:", isAvailable);
+    return reply.status(200).send({
+      status: "success",
+      data: {
+        cpf,
+        isAvailable,
+        message: isAvailable ? "CPF dispon\xEDvel" : "CPF j\xE1 est\xE1 em uso"
+      }
+    });
+  } catch (error) {
+    console.error("Erro ao verificar disponibilidade do CPF:", error);
+    return reply.status(500).send({
+      status: "error",
+      message: "Erro ao verificar disponibilidade do CPF"
+    });
+  }
+}
 
 // src/docs/usuario.ts
-var import_v44 = require("zod/v4");
+var import_zod4 = require("zod");
 
 // src/middlewares/auth.ts
 async function autenticarToken(request, reply) {
@@ -604,10 +1426,12 @@ async function autenticarToken(request, reply) {
       throw new Unauthorized("Formato de token inv\xE1lido. Use: Bearer <token>");
     }
     await request.jwtVerify();
-    const { userId, register } = request.user;
+    const { userId, primaryRole, primaryOrganizationId, userOrganizations } = request.user;
     request.usuario = {
       id: userId,
-      register
+      primaryRole,
+      primaryOrganizationId,
+      userOrganizations
     };
   } catch (error) {
     if (error instanceof Unauthorized) {
@@ -624,85 +1448,180 @@ async function autenticarToken(request, reply) {
 }
 
 // src/utils/scheme.ts
-var import_v42 = require("zod/v4");
-var headersSchema = import_v42.z.object({
-  authorization: import_v42.z.string()
+var import_zod2 = require("zod");
+var headersSchema = import_zod2.z.object({
+  authorization: import_zod2.z.string()
 });
 
 // src/types/usuario.ts
-var import_v43 = require("zod/v4");
-
-// src/utils/formatDate.ts
-function formatDate(date) {
-  if (!date) return null;
-  const dateObj = typeof date === "string" ? new Date(date) : date;
-  if (isNaN(dateObj.getTime())) return null;
-  return dateObj.toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "America/Sao_Paulo"
-  });
-}
-
-// src/types/usuario.ts
-var schemaRegister = import_v43.z.enum(["patient", "parents", "doctor", "attendant"]);
-var responseUsuarioSchemaProps = {
-  id: import_v43.z.string(),
-  name: import_v43.z.string().nullish(),
-  email: import_v43.z.string().transform((value) => value.toLowerCase()),
-  image: import_v43.z.string().nullish(),
-  birthDate: import_v43.z.coerce.string().or(import_v43.z.date()).transform(formatDate).nullish(),
-  cpf: import_v43.z.string(),
-  phone: import_v43.z.string().nullish(),
-  address: import_v43.z.string().nullish(),
-  numberOfAddress: import_v43.z.string().nullish(),
-  complement: import_v43.z.string().nullish(),
-  city: import_v43.z.string().nullish(),
-  state: import_v43.z.string().nullish(),
-  zipCode: import_v43.z.string().nullish(),
-  country: import_v43.z.string().nullish(),
-  cid: import_v43.z.string().nullish(),
-  register: schemaRegister,
-  createdAt: import_v43.z.coerce.string().or(import_v43.z.date()).transform(formatDate).nullish(),
-  updatedAt: import_v43.z.coerce.string().or(import_v43.z.date()).transform(formatDate).nullish()
-};
-var responseUsuarioSchema = import_v43.z.object(responseUsuarioSchemaProps);
-var requestUsuarioSchema = responseUsuarioSchema.omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true
-}).extend({
-  password: import_v43.z.string().describe("Senha obrigat\xF3ria para cria\xE7\xE3o do usu\xE1rio")
+var import_zod3 = require("zod");
+var schemaRegister = import_zod3.z.enum([
+  "patient",
+  "parents",
+  "professional",
+  "attendant"
+]);
+var schemaUsuario = import_zod3.z.object({
+  name: import_zod3.z.string().min(1, "Nome \xE9 obrigat\xF3rio"),
+  email: import_zod3.z.string().email("Email inv\xE1lido"),
+  password: import_zod3.z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  cpf: import_zod3.z.string().min(11, "CPF deve ter pelo menos 11 caracteres"),
+  phone: import_zod3.z.string().optional(),
+  birthDate: import_zod3.z.string().optional(),
+  address: import_zod3.z.string().optional(),
+  numberOfAddress: import_zod3.z.string().optional(),
+  complement: import_zod3.z.string().optional(),
+  city: import_zod3.z.string().optional(),
+  state: import_zod3.z.string().optional(),
+  zipCode: import_zod3.z.string().optional(),
+  country: import_zod3.z.string().optional(),
+  image: import_zod3.z.string().optional()
 });
-var editUsuarioSchema = requestUsuarioSchema.partial();
-var editUsuarioByAdminSchema = editUsuarioSchema.extend({
-  cid: import_v43.z.string().optional().describe("CID - C\xF3digo Internacional de Doen\xE7as (apenas administradores)")
+var schemaUsuarioUpdate = import_zod3.z.object({
+  name: import_zod3.z.string().min(1, "Nome \xE9 obrigat\xF3rio").optional(),
+  email: import_zod3.z.string().email("Email inv\xE1lido").optional(),
+  phone: import_zod3.z.string().optional(),
+  birthDate: import_zod3.z.string().optional(),
+  address: import_zod3.z.string().optional(),
+  numberOfAddress: import_zod3.z.string().optional(),
+  complement: import_zod3.z.string().optional(),
+  city: import_zod3.z.string().optional(),
+  state: import_zod3.z.string().optional(),
+  zipCode: import_zod3.z.string().optional(),
+  country: import_zod3.z.string().optional(),
+  image: import_zod3.z.string().optional()
 });
-var responseUsuarioLoginSchema = import_v43.z.object({
-  token: import_v43.z.string(),
-  usuario: responseUsuarioSchema
+var schemaPatientCID = import_zod3.z.object({
+  patientId: import_zod3.z.string().min(1, "ID do paciente \xE9 obrigat\xF3rio"),
+  professionalId: import_zod3.z.string().min(1, "ID do profissional \xE9 obrigat\xF3rio"),
+  organizationId: import_zod3.z.string().min(1, "ID da organiza\xE7\xE3o \xE9 obrigat\xF3rio"),
+  cid: import_zod3.z.string().min(1, "CID \xE9 obrigat\xF3rio"),
+  description: import_zod3.z.string().optional()
 });
-var responseDoctorSchema = import_v43.z.object({
-  id: import_v43.z.string(),
-  name: import_v43.z.string().nullish(),
-  email: import_v43.z.string().transform((value) => value.toLowerCase()),
-  image: import_v43.z.string().nullish(),
-  phone: import_v43.z.string().nullish(),
-  address: import_v43.z.string().nullish(),
-  city: import_v43.z.string().nullish(),
-  state: import_v43.z.string().nullish(),
-  cid: import_v43.z.string().nullish(),
-  register: schemaRegister,
-  createdAt: import_v43.z.coerce.string().or(import_v43.z.date()).transform(formatDate).nullish()
+var schemaPatientCIDUpdate = import_zod3.z.object({
+  cid: import_zod3.z.string().min(1, "CID \xE9 obrigat\xF3rio"),
+  description: import_zod3.z.string().optional()
 });
+var schemaUsuarioCreate = import_zod3.z.object({
+  name: import_zod3.z.string().min(1, "Nome \xE9 obrigat\xF3rio"),
+  email: import_zod3.z.string().email("Email inv\xE1lido"),
+  password: import_zod3.z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  cpf: import_zod3.z.string().min(11, "CPF deve ter pelo menos 11 caracteres"),
+  phone: import_zod3.z.string().optional(),
+  birthDate: import_zod3.z.string().optional(),
+  address: import_zod3.z.string().optional(),
+  numberOfAddress: import_zod3.z.string().optional(),
+  complement: import_zod3.z.string().optional(),
+  city: import_zod3.z.string().optional(),
+  state: import_zod3.z.string().optional(),
+  zipCode: import_zod3.z.string().optional(),
+  country: import_zod3.z.string().optional(),
+  image: import_zod3.z.string().optional()
+});
+var schemaUsuarioCreateAdmin = import_zod3.z.object({
+  name: import_zod3.z.string().min(1, "Nome \xE9 obrigat\xF3rio"),
+  email: import_zod3.z.string().email("Email inv\xE1lido"),
+  password: import_zod3.z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  cpf: import_zod3.z.string().min(11, "CPF deve ter pelo menos 11 caracteres"),
+  phone: import_zod3.z.string().optional(),
+  birthDate: import_zod3.z.string().optional(),
+  address: import_zod3.z.string().optional(),
+  numberOfAddress: import_zod3.z.string().optional(),
+  complement: import_zod3.z.string().optional(),
+  city: import_zod3.z.string().optional(),
+  state: import_zod3.z.string().optional(),
+  zipCode: import_zod3.z.string().optional(),
+  country: import_zod3.z.string().optional(),
+  image: import_zod3.z.string().optional()
+});
+var schemaUsuarioUpdateAdmin = import_zod3.z.object({
+  name: import_zod3.z.string().min(1, "Nome \xE9 obrigat\xF3rio").optional(),
+  email: import_zod3.z.string().email("Email inv\xE1lido").optional(),
+  password: import_zod3.z.string().min(6, "Senha deve ter pelo menos 6 caracteres").optional(),
+  cpf: import_zod3.z.string().min(11, "CPF deve ter pelo menos 11 caracteres").optional(),
+  phone: import_zod3.z.string().optional(),
+  birthDate: import_zod3.z.string().optional(),
+  address: import_zod3.z.string().optional(),
+  numberOfAddress: import_zod3.z.string().optional(),
+  complement: import_zod3.z.string().optional(),
+  city: import_zod3.z.string().optional(),
+  state: import_zod3.z.string().optional(),
+  zipCode: import_zod3.z.string().optional(),
+  country: import_zod3.z.string().optional(),
+  image: import_zod3.z.string().optional()
+});
+var schemaUsuarioCreateByProfessional = import_zod3.z.object({
+  name: import_zod3.z.string().min(1, "Nome \xE9 obrigat\xF3rio"),
+  email: import_zod3.z.string().email("Email inv\xE1lido"),
+  password: import_zod3.z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  cpf: import_zod3.z.string().min(11, "CPF deve ter pelo menos 11 caracteres"),
+  phone: import_zod3.z.string().optional(),
+  birthDate: import_zod3.z.string().optional(),
+  address: import_zod3.z.string().optional(),
+  numberOfAddress: import_zod3.z.string().optional(),
+  complement: import_zod3.z.string().optional(),
+  city: import_zod3.z.string().optional(),
+  state: import_zod3.z.string().optional(),
+  zipCode: import_zod3.z.string().optional(),
+  country: import_zod3.z.string().optional(),
+  image: import_zod3.z.string().optional()
+});
+var schemaUsuarioUpdateByProfessional = import_zod3.z.object({
+  name: import_zod3.z.string().min(1, "Nome \xE9 obrigat\xF3rio").optional(),
+  email: import_zod3.z.string().email("Email inv\xE1lido").optional(),
+  password: import_zod3.z.string().min(6, "Senha deve ter pelo menos 6 caracteres").optional(),
+  cpf: import_zod3.z.string().min(11, "CPF deve ter pelo menos 11 caracteres").optional(),
+  phone: import_zod3.z.string().optional(),
+  birthDate: import_zod3.z.string().optional(),
+  address: import_zod3.z.string().optional(),
+  numberOfAddress: import_zod3.z.string().optional(),
+  complement: import_zod3.z.string().optional(),
+  city: import_zod3.z.string().optional(),
+  state: import_zod3.z.string().optional(),
+  zipCode: import_zod3.z.string().optional(),
+  country: import_zod3.z.string().optional(),
+  image: import_zod3.z.string().optional()
+});
+var editUsuarioSchema = schemaUsuarioUpdate;
+var editUsuarioByAdminSchema = schemaUsuarioUpdateByProfessional;
+var requestUsuarioSchema = schemaUsuarioCreate;
+var responseProfessionalSchema = import_zod3.z.object({
+  id: import_zod3.z.string(),
+  name: import_zod3.z.string(),
+  email: import_zod3.z.string(),
+  cpf: import_zod3.z.string(),
+  phone: import_zod3.z.string().nullable(),
+  birthDate: import_zod3.z.string().nullable(),
+  address: import_zod3.z.string().nullable(),
+  numberOfAddress: import_zod3.z.string().nullable(),
+  complement: import_zod3.z.string().nullable(),
+  city: import_zod3.z.string().nullable(),
+  state: import_zod3.z.string().nullable(),
+  zipCode: import_zod3.z.string().nullable(),
+  country: import_zod3.z.string().nullable(),
+  image: import_zod3.z.string().nullable(),
+  primaryRole: import_zod3.z.string(),
+  primaryOrganizationId: import_zod3.z.string().nullable(),
+  organizations: import_zod3.z.array(
+    import_zod3.z.object({
+      id: import_zod3.z.string(),
+      name: import_zod3.z.string(),
+      role: import_zod3.z.string()
+    })
+  ),
+  createdAt: import_zod3.z.string(),
+  updatedAt: import_zod3.z.string()
+});
+var responseUsuarioLoginSchema = import_zod3.z.object({
+  token: import_zod3.z.string(),
+  usuario: responseProfessionalSchema
+});
+var responseUsuarioSchema = responseProfessionalSchema;
 
 // src/docs/usuario.ts
-var errorResponseSchema = import_v44.z.object({
-  status: import_v44.z.literal("error"),
-  message: import_v44.z.string()
+var errorResponseSchema = import_zod4.z.object({
+  status: import_zod4.z.literal("error"),
+  message: import_zod4.z.string()
 });
 var usuarioDocs = class {
 };
@@ -714,8 +1633,8 @@ usuarioDocs.getUsuario = {
     description: "Retorna os dados do usu\xE1rio logado",
     headers: headersSchema,
     response: {
-      200: import_v44.z.object({
-        status: import_v44.z.literal("success"),
+      200: import_zod4.z.object({
+        status: import_zod4.z.literal("success"),
         data: responseUsuarioSchema
       }),
       400: errorResponseSchema,
@@ -723,15 +1642,15 @@ usuarioDocs.getUsuario = {
     }
   }
 };
-usuarioDocs.getDoctors = {
+usuarioDocs.getProfessionals = {
   schema: {
     tags: ["Usuario"],
-    summary: "Listar todos os m\xE9dicos",
-    description: "Retorna todos os m\xE9dicos cadastrados no sistema",
+    summary: "Listar todos os profissionais",
+    description: "Retorna todos os profissionais cadastrados no sistema",
     response: {
-      200: import_v44.z.object({
-        status: import_v44.z.literal("success"),
-        data: import_v44.z.array(responseDoctorSchema)
+      200: import_zod4.z.object({
+        status: import_zod4.z.literal("success"),
+        data: import_zod4.z.array(responseProfessionalSchema)
       }),
       500: errorResponseSchema
     }
@@ -745,9 +1664,9 @@ usuarioDocs.getAllUsuarios = {
     description: "Retorna todos os usu\xE1rios cadastrados no sistema (apenas m\xE9dicos podem acessar)",
     headers: headersSchema,
     response: {
-      200: import_v44.z.object({
-        status: import_v44.z.literal("success"),
-        data: import_v44.z.array(responseUsuarioSchema)
+      200: import_zod4.z.object({
+        status: import_zod4.z.literal("success"),
+        data: import_zod4.z.array(responseUsuarioSchema)
       }),
       401: errorResponseSchema,
       403: errorResponseSchema,
@@ -762,12 +1681,12 @@ usuarioDocs.getUsuarioById = {
     summary: "Buscar usu\xE1rio por ID",
     description: "Retorna todas as informa\xE7\xF5es de um usu\xE1rio espec\xEDfico pelo ID. Apenas m\xE9dicos podem acessar.",
     headers: headersSchema,
-    params: import_v44.z.object({
-      id: import_v44.z.string().describe("ID do usu\xE1rio")
+    params: import_zod4.z.object({
+      id: import_zod4.z.string().describe("ID do usu\xE1rio")
     }),
     response: {
-      200: import_v44.z.object({
-        status: import_v44.z.literal("success"),
+      200: import_zod4.z.object({
+        status: import_zod4.z.literal("success"),
         data: responseUsuarioSchema
       }),
       401: errorResponseSchema,
@@ -784,13 +1703,13 @@ usuarioDocs.putUsuarioByDoctor = {
     summary: "Atualizar dados de usu\xE1rio (m\xE9dico)",
     description: "Permite que m\xE9dicos atualizem os dados de qualquer usu\xE1rio do sistema, incluindo o campo CID",
     headers: headersSchema,
-    params: import_v44.z.object({
-      id: import_v44.z.string().describe("ID do usu\xE1rio a ser atualizado")
+    params: import_zod4.z.object({
+      id: import_zod4.z.string().describe("ID do usu\xE1rio a ser atualizado")
     }),
     body: editUsuarioByAdminSchema,
     response: {
-      200: import_v44.z.object({
-        status: import_v44.z.literal("success"),
+      200: import_zod4.z.object({
+        status: import_zod4.z.literal("success"),
         data: responseUsuarioSchema
       }),
       400: errorResponseSchema,
@@ -806,13 +1725,13 @@ usuarioDocs.loginUsuario = {
     tags: ["Usuario"],
     summary: "Login do usu\xE1rio",
     description: "Login do usu\xE1rio",
-    body: import_v44.z.object({
-      email: import_v44.z.string().transform((value) => value.toLowerCase()),
-      password: import_v44.z.string()
+    body: import_zod4.z.object({
+      email: import_zod4.z.string().transform((value) => value.toLowerCase()),
+      password: import_zod4.z.string()
     }),
     response: {
-      200: import_v44.z.object({
-        status: import_v44.z.literal("success"),
+      200: import_zod4.z.object({
+        status: import_zod4.z.literal("success"),
         data: responseUsuarioLoginSchema
       }),
       400: errorResponseSchema,
@@ -828,8 +1747,8 @@ usuarioDocs.postUsuario = {
     description: "Cria um novo usu\xE1rio",
     body: requestUsuarioSchema,
     response: {
-      200: import_v44.z.object({
-        status: import_v44.z.literal("success"),
+      200: import_zod4.z.object({
+        status: import_zod4.z.literal("success"),
         data: responseUsuarioLoginSchema
       }),
       400: errorResponseSchema,
@@ -845,8 +1764,8 @@ usuarioDocs.postUsuarioAdmin = {
     description: "Cria um novo usu\xE1rio com a role especificada",
     body: requestUsuarioSchema,
     response: {
-      200: import_v44.z.object({
-        status: import_v44.z.literal("success"),
+      200: import_zod4.z.object({
+        status: import_zod4.z.literal("success"),
         data: responseUsuarioLoginSchema
       }),
       400: errorResponseSchema,
@@ -863,8 +1782,8 @@ usuarioDocs.putUsuario = {
     headers: headersSchema,
     body: editUsuarioSchema,
     response: {
-      200: import_v44.z.object({
-        status: import_v44.z.literal("success"),
+      200: import_zod4.z.object({
+        status: import_zod4.z.literal("success"),
         data: responseUsuarioSchema
       }),
       400: errorResponseSchema,
@@ -876,22 +1795,235 @@ usuarioDocs.deleteUsuario = {
   preHandler: [autenticarToken],
   schema: {
     tags: ["Usuario"],
-    summary: "Deletar um usu\xE1rio",
-    description: "Deleta um usu\xE1rio espec\xEDfico. Apenas admins podem deletar usu\xE1rios.",
+    summary: "Deletar usu\xE1rio",
+    description: "Deleta um usu\xE1rio do sistema. Apenas administradores podem acessar.",
     headers: headersSchema,
-    params: import_v44.z.object({
-      id: import_v44.z.string().describe("ID do usu\xE1rio a ser deletado")
+    params: import_zod4.z.object({
+      id: import_zod4.z.string().describe("ID do usu\xE1rio a ser deletado")
     }),
     response: {
-      200: import_v44.z.object({
-        status: import_v44.z.literal("success"),
-        data: import_v44.z.object({
-          message: import_v44.z.string()
+      200: import_zod4.z.object({
+        status: import_zod4.z.literal("success"),
+        data: import_zod4.z.object({
+          message: import_zod4.z.string()
+        })
+      }),
+      401: errorResponseSchema,
+      403: errorResponseSchema,
+      404: errorResponseSchema,
+      500: errorResponseSchema
+    }
+  }
+};
+usuarioDocs.addUserToOrganization = {
+  preHandler: [autenticarToken],
+  schema: {
+    tags: ["Usuario"],
+    summary: "Adicionar usu\xE1rio a organiza\xE7\xE3o",
+    description: "Adiciona um usu\xE1rio existente a uma organiza\xE7\xE3o com um papel espec\xEDfico. Apenas administradores podem acessar.",
+    headers: headersSchema,
+    body: import_zod4.z.object({
+      userId: import_zod4.z.string().describe("ID do usu\xE1rio"),
+      organizationId: import_zod4.z.string().describe("ID da organiza\xE7\xE3o"),
+      role: import_zod4.z.enum([
+        "owner",
+        "admin",
+        "professional",
+        "attendant",
+        "patient",
+        "member"
+      ]).describe("Papel do usu\xE1rio na organiza\xE7\xE3o")
+    }),
+    response: {
+      200: import_zod4.z.object({
+        status: import_zod4.z.literal("success"),
+        data: import_zod4.z.object({
+          id: import_zod4.z.string(),
+          userId: import_zod4.z.string(),
+          organizationId: import_zod4.z.string(),
+          role: import_zod4.z.string(),
+          isActive: import_zod4.z.boolean(),
+          joinedAt: import_zod4.z.string(),
+          createdAt: import_zod4.z.string(),
+          updatedAt: import_zod4.z.string(),
+          organization: import_zod4.z.object({
+            id: import_zod4.z.string(),
+            name: import_zod4.z.string()
+          })
         })
       }),
       400: errorResponseSchema,
       401: errorResponseSchema,
+      403: errorResponseSchema,
       404: errorResponseSchema,
+      500: errorResponseSchema
+    }
+  }
+};
+usuarioDocs.getUserOrganizations = {
+  preHandler: [autenticarToken],
+  schema: {
+    tags: ["Usuario"],
+    summary: "Buscar organiza\xE7\xF5es de usu\xE1rio",
+    description: "Busca todas as organiza\xE7\xF5es de um usu\xE1rio espec\xEDfico. Apenas administradores podem acessar.",
+    headers: headersSchema,
+    params: import_zod4.z.object({
+      userId: import_zod4.z.string().describe("ID do usu\xE1rio")
+    }),
+    response: {
+      200: import_zod4.z.object({
+        status: import_zod4.z.literal("success"),
+        data: import_zod4.z.array(
+          import_zod4.z.object({
+            id: import_zod4.z.string(),
+            userId: import_zod4.z.string(),
+            organizationId: import_zod4.z.string(),
+            role: import_zod4.z.string(),
+            isActive: import_zod4.z.boolean(),
+            joinedAt: import_zod4.z.string(),
+            createdAt: import_zod4.z.string(),
+            updatedAt: import_zod4.z.string(),
+            organization: import_zod4.z.object({
+              id: import_zod4.z.string(),
+              name: import_zod4.z.string(),
+              description: import_zod4.z.string().nullable()
+            })
+          })
+        )
+      }),
+      401: errorResponseSchema,
+      403: errorResponseSchema,
+      404: errorResponseSchema,
+      500: errorResponseSchema
+    }
+  }
+};
+usuarioDocs.getUsersFromCurrentOrganization = {
+  preHandler: [autenticarToken],
+  schema: {
+    tags: ["Usuario"],
+    summary: "Buscar usu\xE1rios da organiza\xE7\xE3o atual",
+    description: "Busca todos os usu\xE1rios da organiza\xE7\xE3o atual do usu\xE1rio logado. Apenas administradores podem acessar.",
+    headers: headersSchema,
+    response: {
+      200: import_zod4.z.object({
+        status: import_zod4.z.literal("success"),
+        data: import_zod4.z.array(
+          import_zod4.z.object({
+            id: import_zod4.z.string(),
+            name: import_zod4.z.string().nullable(),
+            email: import_zod4.z.string(),
+            cpf: import_zod4.z.string(),
+            phone: import_zod4.z.string().nullable(),
+            birthDate: import_zod4.z.string().nullable(),
+            address: import_zod4.z.string().nullable(),
+            numberOfAddress: import_zod4.z.string().nullable(),
+            complement: import_zod4.z.string().nullable(),
+            city: import_zod4.z.string().nullable(),
+            state: import_zod4.z.string().nullable(),
+            zipCode: import_zod4.z.string().nullable(),
+            country: import_zod4.z.string().nullable(),
+            createdAt: import_zod4.z.string(),
+            updatedAt: import_zod4.z.string(),
+            primaryRole: import_zod4.z.string().nullable(),
+            primaryOrganizationId: import_zod4.z.string().nullable(),
+            organizations: import_zod4.z.array(
+              import_zod4.z.object({
+                id: import_zod4.z.string(),
+                role: import_zod4.z.string(),
+                joinedAt: import_zod4.z.string(),
+                isActive: import_zod4.z.boolean()
+              })
+            )
+          })
+        )
+      }),
+      400: errorResponseSchema,
+      401: errorResponseSchema,
+      403: errorResponseSchema,
+      500: errorResponseSchema
+    }
+  }
+};
+usuarioDocs.removeUserFromOrganization = {
+  preHandler: [autenticarToken],
+  schema: {
+    tags: ["Usuario"],
+    summary: "Remover usu\xE1rio da organiza\xE7\xE3o",
+    description: "Remove um usu\xE1rio da organiza\xE7\xE3o atual do usu\xE1rio logado. Apenas administradores podem acessar.",
+    headers: headersSchema,
+    params: import_zod4.z.object({
+      userId: import_zod4.z.string().describe("ID do usu\xE1rio a ser removido")
+    }),
+    response: {
+      200: import_zod4.z.object({
+        status: import_zod4.z.literal("success"),
+        data: import_zod4.z.object({
+          id: import_zod4.z.string(),
+          userId: import_zod4.z.string(),
+          organizationId: import_zod4.z.string(),
+          role: import_zod4.z.string(),
+          isActive: import_zod4.z.boolean(),
+          joinedAt: import_zod4.z.string(),
+          createdAt: import_zod4.z.string(),
+          updatedAt: import_zod4.z.string(),
+          organization: import_zod4.z.object({
+            id: import_zod4.z.string(),
+            name: import_zod4.z.string()
+          })
+        })
+      }),
+      400: errorResponseSchema,
+      401: errorResponseSchema,
+      403: errorResponseSchema,
+      404: errorResponseSchema,
+      500: errorResponseSchema
+    }
+  }
+};
+usuarioDocs.getAllUsersFromSystem = {
+  preHandler: [autenticarToken],
+  schema: {
+    tags: ["Usuario"],
+    summary: "Buscar todos os usu\xE1rios do sistema",
+    description: "Busca todos os usu\xE1rios do sistema. Apenas propriet\xE1rios, administradores e membros podem acessar.",
+    headers: headersSchema,
+    response: {
+      200: import_zod4.z.object({
+        status: import_zod4.z.literal("success"),
+        data: import_zod4.z.array(
+          import_zod4.z.object({
+            id: import_zod4.z.string(),
+            name: import_zod4.z.string().nullable(),
+            email: import_zod4.z.string(),
+            cpf: import_zod4.z.string(),
+            phone: import_zod4.z.string().nullable(),
+            birthDate: import_zod4.z.string().nullable(),
+            address: import_zod4.z.string().nullable(),
+            numberOfAddress: import_zod4.z.string().nullable(),
+            complement: import_zod4.z.string().nullable(),
+            city: import_zod4.z.string().nullable(),
+            state: import_zod4.z.string().nullable(),
+            zipCode: import_zod4.z.string().nullable(),
+            country: import_zod4.z.string().nullable(),
+            createdAt: import_zod4.z.string(),
+            updatedAt: import_zod4.z.string(),
+            primaryRole: import_zod4.z.string().nullable(),
+            primaryOrganizationId: import_zod4.z.string().nullable(),
+            organizations: import_zod4.z.array(
+              import_zod4.z.object({
+                id: import_zod4.z.string(),
+                name: import_zod4.z.string(),
+                role: import_zod4.z.string(),
+                joinedAt: import_zod4.z.string()
+              })
+            )
+          })
+        )
+      }),
+      400: errorResponseSchema,
+      401: errorResponseSchema,
+      403: errorResponseSchema,
       500: errorResponseSchema
     }
   }
@@ -900,7 +2032,7 @@ usuarioDocs.deleteUsuario = {
 // src/routes/user/usuarioRoutes.ts
 async function usuarioRoutes(app2) {
   app2.withTypeProvider().get("/user", usuarioDocs.getUsuario, getUsuario);
-  app2.withTypeProvider().get("/doctors", usuarioDocs.getDoctors, getDoctors);
+  app2.withTypeProvider().get("/professionals", usuarioDocs.getProfessionals, getProfessionals);
   app2.withTypeProvider().get("/users", usuarioDocs.getAllUsuarios, getAllUsuarios);
   app2.withTypeProvider().get("/users/:id", usuarioDocs.getUsuarioById, getUsuarioById);
   app2.withTypeProvider().post("/user/login", usuarioDocs.loginUsuario, loginUsuario);
@@ -909,6 +2041,33 @@ async function usuarioRoutes(app2) {
   app2.withTypeProvider().put("/user", usuarioDocs.putUsuario, updateUsuario);
   app2.withTypeProvider().put("/user/:id", usuarioDocs.putUsuarioByDoctor, updateUsuarioByDoctor);
   app2.withTypeProvider().delete("/user/:id", usuarioDocs.deleteUsuario, deleteUsuario);
+  app2.withTypeProvider().post(
+    "/user/organization",
+    usuarioDocs.addUserToOrganization,
+    addUserToOrganizationController
+  );
+  app2.withTypeProvider().get(
+    "/user/:userId/organizations",
+    usuarioDocs.getUserOrganizations,
+    getUserOrganizationsController
+  );
+  app2.withTypeProvider().get(
+    "/user/organization/current",
+    usuarioDocs.getUsersFromCurrentOrganization,
+    getUsersFromCurrentOrganizationController
+  );
+  app2.withTypeProvider().delete(
+    "/user/organization/:userId",
+    usuarioDocs.removeUserFromOrganization,
+    removeUserFromOrganizationController
+  );
+  app2.withTypeProvider().get(
+    "/user/system/all",
+    usuarioDocs.getAllUsersFromSystem,
+    getAllUsersFromSystemController
+  );
+  app2.withTypeProvider().get("/user/check-email/:email", checkEmailAvailability);
+  app2.withTypeProvider().get("/user/check-cpf/:cpf", checkCpfAvailability);
 }
 
 // src/service/appointmentService.service.ts
@@ -975,11 +2134,11 @@ async function sendAppointmentConfirmation(appointment) {
     appointmentId: appointment.id,
     type: "confirmation",
     title: "Agendamento Confirmado",
-    message: `Seu agendamento com ${appointment.doctor.name} foi confirmado para ${date} \xE0s ${time}`
+    message: `Seu agendamento com ${appointment.professional.name} foi confirmado para ${date} \xE0s ${time}`
   });
   const emailHtml = getAppointmentConfirmationTemplate({
     patientName: appointment.patient.name || "Paciente",
-    doctorName: appointment.doctor.name || "Profissional",
+    professionalName: appointment.professional.name || "Profissional",
     date,
     time
   });
@@ -992,11 +2151,11 @@ async function sendAppointmentCancellation(appointment, reason) {
     appointmentId: appointment.id,
     type: "cancellation",
     title: "Agendamento Cancelado",
-    message: `Seu agendamento com ${appointment.doctor.name} para ${date} \xE0s ${time} foi cancelado`
+    message: `Seu agendamento com ${appointment.professional.name} para ${date} \xE0s ${time} foi cancelado`
   });
   const emailHtml = getAppointmentCancellationTemplate({
     patientName: appointment.patient.name || "Paciente",
-    doctorName: appointment.doctor.name || "Profissional",
+    professionalName: appointment.professional.name || "Profissional",
     date,
     time,
     reason
@@ -1011,7 +2170,8 @@ var END_HOUR = 20;
 var selectAppointment = {
   id: true,
   patientId: true,
-  doctorId: true,
+  professionalId: true,
+  organizationId: true,
   startTime: true,
   endTime: true,
   status: true,
@@ -1029,16 +2189,22 @@ var selectAppointmentWithUsers = {
       phone: true
     }
   },
-  doctor: {
+  professional: {
     select: {
       id: true,
       name: true,
       email: true,
       phone: true
     }
+  },
+  organization: {
+    select: {
+      id: true,
+      name: true
+    }
   }
 };
-async function checkSlotAvailability(doctorId, startTime, endTime) {
+async function checkSlotAvailability(professionalId, organizationId2, startTime, endTime) {
   const localStartTime = (0, import_moment_timezone3.default)(startTime).add(3, "hours").toDate();
   const localEndTime = (0, import_moment_timezone3.default)(endTime).add(3, "hours").toDate();
   console.log(
@@ -1048,7 +2214,8 @@ async function checkSlotAvailability(doctorId, startTime, endTime) {
   const dayOfWeek = appointmentDate.day();
   const availability = await prisma.availability.findFirst({
     where: {
-      doctorId,
+      professionalId,
+      organizationId: organizationId2,
       dayOfWeek,
       isActive: true
     }
@@ -1062,89 +2229,44 @@ async function checkSlotAvailability(doctorId, startTime, endTime) {
   const [availEndHour, availEndMin] = availability.endTime.split(":").map(Number);
   const availabilityStart = appointmentDate.clone().hour(availStartHour).minute(availStartMin);
   const availabilityEnd = appointmentDate.clone().hour(availEndHour).minute(availEndMin);
-  const appointmentStart = (0, import_moment_timezone3.default)(localStartTime).tz(TIMEZONE2);
-  const appointmentEnd = (0, import_moment_timezone3.default)(localEndTime).tz(TIMEZONE2);
-  console.log(
-    `\u{1F4C5} Disponibilidade do m\xE9dico: ${availabilityStart.format(
-      "HH:mm"
-    )} - ${availabilityEnd.format("HH:mm")}`
-  );
-  console.log(
-    `\u{1F4C5} Hor\xE1rio solicitado: ${appointmentStart.format(
-      "HH:mm"
-    )} - ${appointmentEnd.format("HH:mm")}`
-  );
-  if (appointmentStart.isBefore(availabilityStart) || appointmentEnd.isAfter(availabilityEnd)) {
+  const requestedStart = (0, import_moment_timezone3.default)(localStartTime).tz(TIMEZONE2);
+  const requestedEnd = (0, import_moment_timezone3.default)(localEndTime).tz(TIMEZONE2);
+  if (requestedStart.isBefore(availabilityStart) || requestedEnd.isAfter(availabilityEnd)) {
     throw new BadRequest(
-      `Hor\xE1rio fora da disponibilidade do m\xE9dico (${availabilityStart.format(
-        "HH:mm"
-      )} - ${availabilityEnd.format("HH:mm")})`
+      "Hor\xE1rio solicitado est\xE1 fora do per\xEDodo de disponibilidade do m\xE9dico"
     );
   }
-  const conflictingAppointment = await prisma.appointment.findFirst({
+  const existingAppointment = await prisma.appointment.findFirst({
     where: {
-      doctorId,
-      status: {
-        notIn: ["cancelled", "no_show"]
+      professionalId,
+      organizationId: organizationId2,
+      startTime: {
+        lt: localEndTime
       },
-      OR: [
-        {
-          AND: [
-            { startTime: { lte: localStartTime } },
-            { endTime: { gt: localStartTime } }
-          ]
-        },
-        {
-          AND: [
-            { startTime: { lt: localEndTime } },
-            { endTime: { gte: localEndTime } }
-          ]
-        },
-        {
-          AND: [
-            { startTime: { gte: localStartTime } },
-            { endTime: { lte: localEndTime } }
-          ]
-        }
-      ]
-    },
-    include: {
-      patient: {
-        select: {
-          id: true,
-          name: true
-        }
+      endTime: {
+        gt: localStartTime
+      },
+      status: {
+        in: ["scheduled", "confirmed"]
       }
     }
   });
-  if (conflictingAppointment) {
-    console.log(
-      `\u274C CONFLITO ENCONTRADO: Agendamento ID ${conflictingAppointment.id}`
-    );
-    console.log(
-      `   Hor\xE1rio conflitante: ${(0, import_moment_timezone3.default)(conflictingAppointment.startTime).tz(TIMEZONE2).format("DD/MM/YYYY HH:mm")} - ${(0, import_moment_timezone3.default)(conflictingAppointment.endTime).tz(TIMEZONE2).format("HH:mm")}`
-    );
-    console.log(
-      `   Paciente: ${conflictingAppointment.patient.name} (ID: ${conflictingAppointment.patient.id})`
-    );
-    console.log(`   Status: ${conflictingAppointment.status}`);
-    throw new BadRequest("Este hor\xE1rio j\xE1 est\xE1 ocupado");
+  if (existingAppointment) {
+    throw new BadRequest("J\xE1 existe um agendamento neste hor\xE1rio");
   }
-  console.log(
-    `\u2705 HOR\xC1RIO DISPON\xCDVEL: ${(0, import_moment_timezone3.default)(localStartTime).tz(TIMEZONE2).format("DD/MM/YYYY HH:mm")} - ${(0, import_moment_timezone3.default)(localEndTime).tz(TIMEZONE2).format("HH:mm")}`
-  );
+  return true;
 }
-async function generateAvailableSlots(doctorId, date) {
+async function generateAvailableSlots(professionalId, date) {
   console.log(`
 === INICIANDO GERA\xC7\xC3O DE SLOTS ===`);
   console.log(`Data solicitada: ${date}`);
-  console.log(`M\xE9dico ID: ${doctorId}`);
+  console.log(`Profissional ID: ${professionalId}`);
   const requestedDate = (0, import_moment_timezone3.default)(date).tz(TIMEZONE2);
   const dayOfWeek = requestedDate.day();
   console.log(`Dia da semana: ${dayOfWeek} (${requestedDate.format("dddd")})`);
   const availability = await prisma.availability.findFirst({
     where: {
-      doctorId,
+      professionalId,
       dayOfWeek,
       isActive: true
     }
@@ -1169,7 +2291,7 @@ async function generateAvailableSlots(doctorId, date) {
   );
   const existingAppointments = await prisma.appointment.findMany({
     where: {
-      doctorId,
+      professionalId,
       startTime: {
         gte: startOfDay,
         lte: endOfDay
@@ -1183,7 +2305,7 @@ async function generateAvailableSlots(doctorId, date) {
     }
   });
   console.log(`=== AGENDAMENTOS EXISTENTES PARA ${date} ===`);
-  console.log(`M\xE9dico ID: ${doctorId}`);
+  console.log(`Profissional ID: ${professionalId}`);
   console.log(`Total de agendamentos: ${existingAppointments.length}`);
   existingAppointments.forEach((appointment, index) => {
     console.log(
@@ -1345,30 +2467,56 @@ async function fixAppointmentTimezones() {
   console.log("\u2705 Corre\xE7\xE3o de timezones conclu\xEDda!");
 }
 var createAppointment = async (appointmentData) => {
-  const { patientId, doctorId, startTime, endTime, notes } = appointmentData;
+  const {
+    patientId,
+    professionalId,
+    organizationId: organizationId2,
+    startTime,
+    endTime,
+    notes
+  } = appointmentData;
   const patientIdString = typeof patientId === "string" ? patientId : patientId.id;
-  const doctorIdString = typeof doctorId === "string" ? doctorId : doctorId.id;
+  const professionalIdString = typeof professionalId === "string" ? professionalId : professionalId.id;
+  const organizationIdString = typeof organizationId2 === "string" ? organizationId2 : organizationId2.id;
   const patient = await prisma.users.findUnique({
     where: { id: patientIdString }
   });
   if (!patient) {
     throw new Error("Paciente n\xE3o encontrado");
   }
-  const doctor = await prisma.users.findUnique({
-    where: { id: doctorIdString, register: "doctor" }
+  const professional = await prisma.users.findUnique({
+    where: { id: professionalIdString }
   });
-  if (!doctor) {
-    throw new Error("M\xE9dico n\xE3o encontrado");
+  if (!professional) {
+    throw new Error("Profissional n\xE3o encontrado");
+  }
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationIdString }
+  });
+  if (!organization) {
+    throw new Error("Organiza\xE7\xE3o n\xE3o encontrada");
   }
   await checkSlotAvailability(
-    doctorIdString,
+    professionalIdString,
+    organizationIdString,
     new Date(startTime),
     new Date(endTime)
   );
+  const canSchedule = await canPatientScheduleWithProfessional(
+    patientIdString,
+    professionalIdString,
+    new Date(startTime)
+  );
+  if (!canSchedule.canSchedule) {
+    throw new BadRequest(
+      canSchedule.reason || "N\xE3o \xE9 poss\xEDvel agendar este hor\xE1rio"
+    );
+  }
   const appointment = await prisma.appointment.create({
     data: {
       patientId: patientIdString,
-      doctorId: doctorIdString,
+      professionalId: professionalIdString,
+      organizationId: organizationIdString,
       startTime: (0, import_moment_timezone3.default)(startTime).add(3, "hours").toDate(),
       endTime: (0, import_moment_timezone3.default)(endTime).add(3, "hours").toDate(),
       notes: notes || "",
@@ -1383,12 +2531,18 @@ var createAppointment = async (appointmentData) => {
           phone: true
         }
       },
-      doctor: {
+      professional: {
         select: {
           id: true,
           name: true,
           email: true,
           phone: true
+        }
+      },
+      organization: {
+        select: {
+          id: true,
+          name: true
         }
       }
     }
@@ -1401,30 +2555,56 @@ var createAppointment = async (appointmentData) => {
   return appointment;
 };
 var createAppointmentForAttendant = async (appointmentData) => {
-  const { patientId, doctorId, startTime, endTime, notes } = appointmentData;
+  const {
+    patientId,
+    professionalId,
+    organizationId: organizationId2,
+    startTime,
+    endTime,
+    notes
+  } = appointmentData;
   const patientIdString = typeof patientId === "string" ? patientId : patientId.id;
-  const doctorIdString = typeof doctorId === "string" ? doctorId : doctorId.id;
+  const professionalIdString = typeof professionalId === "string" ? professionalId : professionalId.id;
+  const organizationIdString = typeof organizationId2 === "string" ? organizationId2 : organizationId2.id;
   const patient = await prisma.users.findUnique({
     where: { id: patientIdString }
   });
   if (!patient) {
     throw new Error("Paciente n\xE3o encontrado");
   }
-  const doctor = await prisma.users.findUnique({
-    where: { id: doctorIdString, register: "doctor" }
+  const professional = await prisma.users.findUnique({
+    where: { id: professionalIdString }
   });
-  if (!doctor) {
-    throw new Error("M\xE9dico n\xE3o encontrado");
+  if (!professional) {
+    throw new Error("Profissional n\xE3o encontrado");
+  }
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationIdString }
+  });
+  if (!organization) {
+    throw new Error("Organiza\xE7\xE3o n\xE3o encontrada");
   }
   await checkSlotAvailabilityForAttendant(
-    doctorIdString,
+    professionalIdString,
+    organizationIdString,
     new Date(startTime),
     new Date(endTime)
   );
+  const canSchedule = await canPatientScheduleWithProfessional(
+    patientIdString,
+    professionalIdString,
+    new Date(startTime)
+  );
+  if (!canSchedule.canSchedule) {
+    throw new BadRequest(
+      canSchedule.reason || "N\xE3o \xE9 poss\xEDvel agendar este hor\xE1rio"
+    );
+  }
   const appointment = await prisma.appointment.create({
     data: {
       patientId: patientIdString,
-      doctorId: doctorIdString,
+      professionalId: professionalIdString,
+      organizationId: organizationIdString,
       startTime: (0, import_moment_timezone3.default)(startTime).add(3, "hours").toDate(),
       endTime: (0, import_moment_timezone3.default)(endTime).add(3, "hours").toDate(),
       notes: notes || "",
@@ -1439,12 +2619,18 @@ var createAppointmentForAttendant = async (appointmentData) => {
           phone: true
         }
       },
-      doctor: {
+      professional: {
         select: {
           id: true,
           name: true,
           email: true,
           phone: true
+        }
+      },
+      organization: {
+        select: {
+          id: true,
+          name: true
         }
       }
     }
@@ -1456,7 +2642,7 @@ var createAppointmentForAttendant = async (appointmentData) => {
   }
   return appointment;
 };
-async function checkSlotAvailabilityForAttendant(doctorId, startTime, endTime) {
+async function checkSlotAvailabilityForAttendant(professionalId, organizationId2, startTime, endTime) {
   const localStartTime = (0, import_moment_timezone3.default)(startTime).add(3, "hours");
   const localEndTime = (0, import_moment_timezone3.default)(endTime).add(3, "hours");
   console.log(
@@ -1466,7 +2652,8 @@ async function checkSlotAvailabilityForAttendant(doctorId, startTime, endTime) {
   const dayOfWeek = appointmentDate.day();
   const availability = await prisma.availability.findFirst({
     where: {
-      doctorId,
+      professionalId,
+      organizationId: organizationId2,
       dayOfWeek,
       isActive: true
     }
@@ -1501,7 +2688,8 @@ async function checkSlotAvailabilityForAttendant(doctorId, startTime, endTime) {
   }
   const conflictingAppointment = await prisma.appointment.findFirst({
     where: {
-      doctorId,
+      professionalId,
+      organizationId: organizationId2,
       status: {
         notIn: ["cancelled", "no_show"]
       },
@@ -1549,8 +2737,50 @@ async function checkSlotAvailabilityForAttendant(doctorId, startTime, endTime) {
     `\u2705 HOR\xC1RIO DISPON\xCDVEL: ${localStartTime.tz(TIMEZONE2).format("DD/MM/YYYY HH:mm")} - ${localEndTime.tz(TIMEZONE2).format("HH:mm")}`
   );
 }
-var canPatientScheduleWithDoctor = async (patientId, doctorId) => {
+var canPatientScheduleWithProfessional = async (patientId, professionalId, requestedDate) => {
   try {
+    if (requestedDate) {
+      const startOfDay = (0, import_moment_timezone3.default)(requestedDate).startOf("day").toDate();
+      const endOfDay = (0, import_moment_timezone3.default)(requestedDate).endOf("day").toDate();
+      const existingAppointment = await prisma.appointment.findFirst({
+        where: {
+          patientId,
+          professionalId,
+          startTime: {
+            gte: startOfDay,
+            lte: endOfDay
+          },
+          status: {
+            in: ["scheduled", "confirmed"]
+          }
+        },
+        include: {
+          patient: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          },
+          professional: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          }
+        }
+      });
+      if (existingAppointment) {
+        return {
+          canSchedule: false,
+          reason: `Voc\xEA j\xE1 possui um agendamento com ${existingAppointment.professional.name} no dia ${(0, import_moment_timezone3.default)(existingAppointment.startTime).format(
+            "DD/MM/YYYY"
+          )} \xE0s ${(0, import_moment_timezone3.default)(existingAppointment.startTime).format("HH:mm")}`,
+          existingAppointment
+        };
+      }
+    }
     return {
       canSchedule: true
     };
@@ -1569,34 +2799,40 @@ function adjustAppointmentTimes(appointments) {
     endTime: appointment.endTime ? (0, import_moment_timezone3.default)(appointment.endTime).subtract(3, "hours").toISOString() : appointment.endTime
   }));
 }
-async function getPatientAppointments(patientId, status) {
-  const where = { patientId };
+async function getPatientAppointments(patientId, organizationId2, status) {
+  const whereClause = {
+    patientId
+  };
+  if (organizationId2) {
+    whereClause.organizationId = organizationId2;
+  }
   if (status) {
-    where.status = status;
+    whereClause.status = status;
   }
   const appointments = await prisma.appointment.findMany({
-    where,
+    where: whereClause,
     select: selectAppointmentWithUsers,
-    orderBy: {
-      startTime: "desc"
-    }
+    orderBy: { startTime: "desc" }
   });
   return adjustAppointmentTimes(appointments);
 }
-async function getDoctorAppointments(doctorId, startDate, endDate) {
-  const where = { doctorId };
+async function getProfessionalAppointments(professionalId, organizationId2, startDate, endDate) {
+  const whereClause = {
+    professionalId
+  };
+  if (organizationId2) {
+    whereClause.organizationId = organizationId2;
+  }
   if (startDate && endDate) {
-    where.startTime = {
+    whereClause.startTime = {
       gte: startDate,
       lte: endDate
     };
   }
   const appointments = await prisma.appointment.findMany({
-    where,
+    where: whereClause,
     select: selectAppointmentWithUsers,
-    orderBy: {
-      startTime: "asc"
-    }
+    orderBy: { startTime: "asc" }
   });
   return adjustAppointmentTimes(appointments);
 }
@@ -1605,7 +2841,7 @@ async function updateAppointmentStatus(appointmentId, status, userId, userRole) 
     where: { id: appointmentId },
     include: {
       patient: true,
-      doctor: true
+      professional: true
     }
   });
   if (!appointment) {
@@ -1616,7 +2852,7 @@ async function updateAppointmentStatus(appointmentId, status, userId, userRole) 
       "Voc\xEA n\xE3o tem permiss\xE3o para alterar este agendamento"
     );
   }
-  if (userRole === "doctor" && appointment.doctorId !== userId) {
+  if (userRole === "professional" && appointment.professionalId !== userId) {
     throw new Unauthorized(
       "Voc\xEA n\xE3o tem permiss\xE3o para alterar este agendamento"
     );
@@ -1650,45 +2886,50 @@ async function updateAppointmentStatus(appointmentId, status, userId, userRole) 
   }
   return updatedAppointment;
 }
-async function createDoctorAvailability(doctorId, availability) {
-  const existing = await prisma.availability.findFirst({
+async function createProfessionalAvailability(professionalId, organizationId2, availability) {
+  const existingAvailability = await prisma.availability.findUnique({
     where: {
-      doctorId,
-      dayOfWeek: availability.dayOfWeek,
-      isActive: true
+      professionalId_organizationId_dayOfWeek_startTime: {
+        professionalId,
+        organizationId: organizationId2,
+        dayOfWeek: availability.dayOfWeek,
+        startTime: availability.startTime
+      }
     }
   });
-  if (existing) {
+  if (existingAvailability) {
     throw new BadRequest(
-      "J\xE1 existe disponibilidade configurada para este dia da semana"
+      "J\xE1 existe disponibilidade configurada para este hor\xE1rio"
     );
   }
-  const created = await prisma.availability.create({
+  const newAvailability = await prisma.availability.create({
     data: {
-      doctorId,
+      professionalId,
+      organizationId: organizationId2,
       dayOfWeek: availability.dayOfWeek,
       startTime: availability.startTime,
       endTime: availability.endTime,
       isActive: true
     }
   });
-  return created;
+  return newAvailability;
 }
-async function getDoctorAvailability(doctorId) {
+async function getProfessionalAvailability(professionalId, organizationId2) {
+  const whereClause = { professionalId };
+  if (organizationId2) {
+    whereClause.organizationId = organizationId2;
+  }
   const availabilities = await prisma.availability.findMany({
-    where: {
-      doctorId,
-      isActive: true
-    },
+    where: whereClause,
     orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }]
   });
   return availabilities;
 }
-async function deleteDoctorAvailability(availabilityId, doctorId) {
+async function deleteProfessionalAvailability(availabilityId, professionalId) {
   const availability = await prisma.availability.findFirst({
     where: {
       id: availabilityId,
-      doctorId,
+      professionalId,
       isActive: true
     }
   });
@@ -1700,7 +2941,7 @@ async function deleteDoctorAvailability(availabilityId, doctorId) {
   const endTime = availability.endTime;
   const futureAppointments = await prisma.appointment.findMany({
     where: {
-      doctorId,
+      professionalId,
       startTime: {
         gte: /* @__PURE__ */ new Date()
       },
@@ -1732,7 +2973,7 @@ async function cancelAppointmentByAttendant(appointmentId, attendantId) {
     where: { id: appointmentId },
     include: {
       patient: true,
-      doctor: true
+      professional: true
     }
   });
   if (!appointment) {
@@ -1827,7 +3068,12 @@ async function getMyAppointments(request, reply) {
     const { startDate, endDate } = request.query;
     const start = startDate ? new Date(startDate) : void 0;
     const end = endDate ? new Date(endDate) : void 0;
-    appointments = await getDoctorAppointments(userId, start, end);
+    appointments = await getProfessionalAppointments(
+      userId,
+      void 0,
+      start,
+      end
+    );
   } else {
     appointments = await getPatientAppointments(userId, status);
   }
@@ -1861,7 +3107,11 @@ async function postAvailability(request, reply) {
       });
     }
     const availability = request.body;
-    const created = await createDoctorAvailability(doctorId, availability);
+    const created = await createProfessionalAvailability(
+      doctorId,
+      organizationId,
+      availability
+    );
     return reply.status(201).send({
       status: "success",
       data: created
@@ -1881,7 +3131,7 @@ async function postAvailability(request, reply) {
 }
 async function getAvailability(request, reply) {
   const { doctorId } = request.params;
-  const availabilities = await getDoctorAvailability(doctorId);
+  const availabilities = await getProfessionalAvailability(doctorId);
   return reply.status(200).send({
     status: "success",
     data: availabilities
@@ -1898,7 +3148,7 @@ async function getTodayAppointments(request, reply) {
   const today = (0, import_moment_timezone4.default)().tz("America/Sao_Paulo");
   const startOfDay = today.clone().startOf("day").toDate();
   const endOfDay = today.clone().endOf("day").toDate();
-  const appointments = await getDoctorAppointments(
+  const appointments = await getProfessionalAppointments(
     doctorId,
     startOfDay,
     endOfDay
@@ -1978,7 +3228,10 @@ async function deleteAvailability(request, reply) {
       });
     }
     const { availabilityId } = request.params;
-    const result = await deleteDoctorAvailability(availabilityId, doctorId);
+    const result = await deleteProfessionalAvailability(
+      availabilityId,
+      doctorId
+    );
     return reply.status(200).send({
       status: "success",
       data: result
@@ -2066,7 +3319,7 @@ async function getUserAppointments(request, reply) {
 async function checkPatientDoctorAvailability(request, reply) {
   try {
     const { patientId, doctorId } = request.params;
-    const availability = await canPatientScheduleWithDoctor(
+    const availability = await canPatientScheduleWithProfessional(
       patientId,
       doctorId
     );
@@ -2099,11 +3352,11 @@ async function fixAppointmentTimezonesController(request, reply) {
 }
 
 // src/docs/appointment.ts
-var import_v46 = require("zod/v4");
+var import_zod6 = require("zod");
 
 // src/types/appointment.ts
-var import_v45 = require("zod/v4");
-var appointmentStatusEnum = import_v45.z.enum([
+var import_zod5 = require("zod");
+var appointmentStatusEnum = import_zod5.z.enum([
   "scheduled",
   "confirmed",
   "cancelled",
@@ -2111,98 +3364,98 @@ var appointmentStatusEnum = import_v45.z.enum([
   "no_show"
 ]);
 var responseAppointmentSchemaProps = {
-  id: import_v45.z.string(),
-  patientId: import_v45.z.string(),
-  doctorId: import_v45.z.string(),
-  startTime: import_v45.z.string(),
-  endTime: import_v45.z.string(),
+  id: import_zod5.z.string(),
+  patientId: import_zod5.z.string(),
+  professionalId: import_zod5.z.string(),
+  startTime: import_zod5.z.string(),
+  endTime: import_zod5.z.string(),
   status: appointmentStatusEnum,
-  notes: import_v45.z.string().nullish(),
-  googleEventId: import_v45.z.string().nullish(),
-  createdAt: import_v45.z.string(),
-  updatedAt: import_v45.z.string()
+  notes: import_zod5.z.string().nullish(),
+  googleEventId: import_zod5.z.string().nullish(),
+  createdAt: import_zod5.z.string(),
+  updatedAt: import_zod5.z.string()
 };
-var responseAppointmentSchema = import_v45.z.object(
+var responseAppointmentSchema = import_zod5.z.object(
   responseAppointmentSchemaProps
 );
 var responseAppointmentWithUsersSchema = responseAppointmentSchema.extend({
-  patient: import_v45.z.object({
-    id: import_v45.z.string(),
-    name: import_v45.z.string().nullish(),
-    email: import_v45.z.string(),
-    phone: import_v45.z.string().nullish()
+  patient: import_zod5.z.object({
+    id: import_zod5.z.string(),
+    name: import_zod5.z.string().nullish(),
+    email: import_zod5.z.string(),
+    phone: import_zod5.z.string().nullish()
   }),
-  doctor: import_v45.z.object({
-    id: import_v45.z.string(),
-    name: import_v45.z.string().nullish(),
-    email: import_v45.z.string(),
-    phone: import_v45.z.string().nullish()
+  professional: import_zod5.z.object({
+    id: import_zod5.z.string(),
+    name: import_zod5.z.string().nullish(),
+    email: import_zod5.z.string(),
+    phone: import_zod5.z.string().nullish()
   })
 });
-var createAppointmentSchema = import_v45.z.object({
-  doctorId: import_v45.z.string().min(1, "ID do m\xE9dico \xE9 obrigat\xF3rio"),
-  startTime: import_v45.z.string(),
-  notes: import_v45.z.string().optional()
+var createAppointmentSchema = import_zod5.z.object({
+  professionalId: import_zod5.z.string().min(1, "ID do profissional \xE9 obrigat\xF3rio"),
+  startTime: import_zod5.z.string(),
+  notes: import_zod5.z.string().optional()
 });
-var updateAppointmentSchema = import_v45.z.object({
-  startTime: import_v45.z.string().optional(),
+var updateAppointmentSchema = import_zod5.z.object({
+  startTime: import_zod5.z.string().optional(),
   status: appointmentStatusEnum.optional(),
-  notes: import_v45.z.string().optional()
+  notes: import_zod5.z.string().optional()
 });
-var getAvailableSlotsSchema = import_v45.z.object({
-  doctorId: import_v45.z.string().min(1, "ID do m\xE9dico \xE9 obrigat\xF3rio"),
-  date: import_v45.z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data deve estar no formato YYYY-MM-DD")
+var getAvailableSlotsSchema = import_zod5.z.object({
+  professionalId: import_zod5.z.string().min(1, "ID do profissional \xE9 obrigat\xF3rio"),
+  date: import_zod5.z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data deve estar no formato YYYY-MM-DD")
 });
-var availabilitySchema = import_v45.z.object({
-  dayOfWeek: import_v45.z.number().min(0).max(6),
-  startTime: import_v45.z.string().regex(/^\d{2}:\d{2}$/, "Hor\xE1rio deve estar no formato HH:mm"),
-  endTime: import_v45.z.string().regex(/^\d{2}:\d{2}$/, "Hor\xE1rio deve estar no formato HH:mm"),
-  isActive: import_v45.z.boolean().optional()
+var availabilitySchema = import_zod5.z.object({
+  dayOfWeek: import_zod5.z.number().min(0).max(6),
+  startTime: import_zod5.z.string().regex(/^\d{2}:\d{2}$/, "Hor\xE1rio deve estar no formato HH:mm"),
+  endTime: import_zod5.z.string().regex(/^\d{2}:\d{2}$/, "Hor\xE1rio deve estar no formato HH:mm"),
+  isActive: import_zod5.z.boolean().optional()
 });
 var responseAvailabilitySchema = availabilitySchema.extend({
-  id: import_v45.z.string(),
-  doctorId: import_v45.z.string(),
-  createdAt: import_v45.z.string(),
-  updatedAt: import_v45.z.string()
+  id: import_zod5.z.string(),
+  professionalId: import_zod5.z.string(),
+  createdAt: import_zod5.z.string(),
+  updatedAt: import_zod5.z.string()
 });
 
 // src/docs/appointment.ts
-var errorResponseSchema2 = import_v46.z.object({
-  status: import_v46.z.literal("error"),
-  message: import_v46.z.string()
+var errorResponseSchema2 = import_zod6.z.object({
+  status: import_zod6.z.literal("error"),
+  message: import_zod6.z.string()
 });
-var attendanceSchema = import_v46.z.object({
-  id: import_v46.z.string(),
-  patientId: import_v46.z.string(),
-  doctorId: import_v46.z.string(),
-  description: import_v46.z.string(),
-  date: import_v46.z.string(),
-  createdAt: import_v46.z.string(),
-  updatedAt: import_v46.z.string(),
-  patient: import_v46.z.object({
-    id: import_v46.z.string(),
-    name: import_v46.z.string().nullish(),
-    email: import_v46.z.string(),
-    phone: import_v46.z.string().nullish()
+var attendanceSchema = import_zod6.z.object({
+  id: import_zod6.z.string(),
+  patientId: import_zod6.z.string(),
+  doctorId: import_zod6.z.string(),
+  description: import_zod6.z.string(),
+  date: import_zod6.z.string(),
+  createdAt: import_zod6.z.string(),
+  updatedAt: import_zod6.z.string(),
+  patient: import_zod6.z.object({
+    id: import_zod6.z.string(),
+    name: import_zod6.z.string().nullish(),
+    email: import_zod6.z.string(),
+    phone: import_zod6.z.string().nullish()
   }).optional(),
-  doctor: import_v46.z.object({
-    id: import_v46.z.string(),
-    name: import_v46.z.string().nullish(),
-    email: import_v46.z.string(),
-    phone: import_v46.z.string().nullish()
+  doctor: import_zod6.z.object({
+    id: import_zod6.z.string(),
+    name: import_zod6.z.string().nullish(),
+    email: import_zod6.z.string(),
+    phone: import_zod6.z.string().nullish()
   }).optional()
 });
-var createAttendanceSchema = import_v46.z.object({
-  patientId: import_v46.z.string(),
-  description: import_v46.z.string().min(1, "Descri\xE7\xE3o obrigat\xF3ria"),
-  date: import_v46.z.string().optional()
+var createAttendanceSchema = import_zod6.z.object({
+  patientId: import_zod6.z.string(),
+  description: import_zod6.z.string().min(1, "Descri\xE7\xE3o obrigat\xF3ria"),
+  date: import_zod6.z.string().optional()
   // pode ser preenchido automaticamente
 });
-var createAppointmentForPatientSchema = import_v46.z.object({
-  patientId: import_v46.z.string().describe("ID do paciente"),
-  doctorId: import_v46.z.string().describe("ID do m\xE9dico (pode ser o pr\xF3prio m\xE9dico logado)"),
-  startTime: import_v46.z.string().describe("Data e hora de in\xEDcio do agendamento"),
-  notes: import_v46.z.string().optional().describe("Observa\xE7\xF5es sobre o agendamento")
+var createAppointmentForPatientSchema = import_zod6.z.object({
+  patientId: import_zod6.z.string().describe("ID do paciente"),
+  doctorId: import_zod6.z.string().describe("ID do m\xE9dico (pode ser o pr\xF3prio m\xE9dico logado)"),
+  startTime: import_zod6.z.string().describe("Data e hora de in\xEDcio do agendamento"),
+  notes: import_zod6.z.string().optional().describe("Observa\xE7\xF5es sobre o agendamento")
 });
 var appointmentDocs = class {
 };
@@ -2215,8 +3468,8 @@ appointmentDocs.postAppointment = {
     headers: headersSchema,
     body: createAppointmentSchema,
     response: {
-      201: import_v46.z.object({
-        status: import_v46.z.literal("success"),
+      201: import_zod6.z.object({
+        status: import_zod6.z.literal("success"),
         data: responseAppointmentWithUsersSchema
       }),
       400: errorResponseSchema2,
@@ -2230,19 +3483,19 @@ appointmentDocs.getAvailableSlotsByPeriod = {
     tags: ["Appointment"],
     summary: "Buscar hor\xE1rios dispon\xEDveis por per\xEDodo",
     description: "Retorna os hor\xE1rios dispon\xEDveis de um m\xE9dico em uma data espec\xEDfica usando startDate e endDate (compatibilidade com frontend)",
-    querystring: import_v46.z.object({
-      startDate: import_v46.z.string().describe("Data de in\xEDcio no formato ISO"),
-      endDate: import_v46.z.string().describe("Data de fim no formato ISO"),
-      doctorId: import_v46.z.string().describe("ID do m\xE9dico")
+    querystring: import_zod6.z.object({
+      startDate: import_zod6.z.string().describe("Data de in\xEDcio no formato ISO"),
+      endDate: import_zod6.z.string().describe("Data de fim no formato ISO"),
+      doctorId: import_zod6.z.string().describe("ID do m\xE9dico")
     }),
     response: {
-      200: import_v46.z.object({
-        status: import_v46.z.literal("success"),
-        data: import_v46.z.array(
-          import_v46.z.object({
-            startTime: import_v46.z.string(),
-            endTime: import_v46.z.string(),
-            available: import_v46.z.boolean()
+      200: import_zod6.z.object({
+        status: import_zod6.z.literal("success"),
+        data: import_zod6.z.array(
+          import_zod6.z.object({
+            startTime: import_zod6.z.string(),
+            endTime: import_zod6.z.string(),
+            available: import_zod6.z.boolean()
           })
         )
       }),
@@ -2258,13 +3511,13 @@ appointmentDocs.getAvailableSlots = {
     description: "Retorna os hor\xE1rios dispon\xEDveis de um m\xE9dico em uma data espec\xEDfica",
     querystring: getAvailableSlotsSchema,
     response: {
-      200: import_v46.z.object({
-        status: import_v46.z.literal("success"),
-        data: import_v46.z.array(
-          import_v46.z.object({
-            startTime: import_v46.z.string(),
-            endTime: import_v46.z.string(),
-            available: import_v46.z.boolean()
+      200: import_zod6.z.object({
+        status: import_zod6.z.literal("success"),
+        data: import_zod6.z.array(
+          import_zod6.z.object({
+            startTime: import_zod6.z.string(),
+            endTime: import_zod6.z.string(),
+            available: import_zod6.z.boolean()
           })
         )
       }),
@@ -2280,15 +3533,15 @@ appointmentDocs.getMyAppointments = {
     summary: "Buscar meus agendamentos",
     description: "Retorna os agendamentos do usu\xE1rio logado (paciente ou m\xE9dico)",
     headers: headersSchema,
-    querystring: import_v46.z.object({
+    querystring: import_zod6.z.object({
       status: appointmentStatusEnum.optional(),
-      startDate: import_v46.z.string().optional(),
-      endDate: import_v46.z.string().optional()
+      startDate: import_zod6.z.string().optional(),
+      endDate: import_zod6.z.string().optional()
     }),
     response: {
-      200: import_v46.z.object({
-        status: import_v46.z.literal("success"),
-        data: import_v46.z.array(responseAppointmentWithUsersSchema)
+      200: import_zod6.z.object({
+        status: import_zod6.z.literal("success"),
+        data: import_zod6.z.array(responseAppointmentWithUsersSchema)
       }),
       401: errorResponseSchema2,
       500: errorResponseSchema2
@@ -2302,11 +3555,11 @@ appointmentDocs.putAppointmentStatus = {
     summary: "Atualizar status do agendamento",
     description: "Atualiza o status de um agendamento. Pacientes s\xF3 podem alterar seus pr\xF3prios agendamentos, m\xE9dicos s\xF3 podem alterar seus agendamentos.",
     headers: headersSchema,
-    params: import_v46.z.object({
-      id: import_v46.z.string().describe("ID do agendamento")
+    params: import_zod6.z.object({
+      id: import_zod6.z.string().describe("ID do agendamento")
     }),
-    body: import_v46.z.object({
-      status: import_v46.z.enum([
+    body: import_zod6.z.object({
+      status: import_zod6.z.enum([
         "scheduled",
         "confirmed",
         "cancelled",
@@ -2315,8 +3568,8 @@ appointmentDocs.putAppointmentStatus = {
       ])
     }),
     response: {
-      200: import_v46.z.object({
-        status: import_v46.z.literal("success"),
+      200: import_zod6.z.object({
+        status: import_zod6.z.literal("success"),
         data: responseAppointmentWithUsersSchema
       }),
       400: errorResponseSchema2,
@@ -2333,12 +3586,12 @@ appointmentDocs.cancelAppointmentByAttendant = {
     summary: "Cancelar agendamento (attendant)",
     description: "Permite que atendentes cancelem agendamentos. N\xE3o \xE9 poss\xEDvel cancelar agendamentos que j\xE1 passaram ou foram finalizados.",
     headers: headersSchema,
-    params: import_v46.z.object({
-      appointmentId: import_v46.z.string().describe("ID do agendamento a ser cancelado")
+    params: import_zod6.z.object({
+      appointmentId: import_zod6.z.string().describe("ID do agendamento a ser cancelado")
     }),
     response: {
-      200: import_v46.z.object({
-        status: import_v46.z.literal("success"),
+      200: import_zod6.z.object({
+        status: import_zod6.z.literal("success"),
         data: responseAppointmentWithUsersSchema
       }),
       400: errorResponseSchema2,
@@ -2358,8 +3611,8 @@ appointmentDocs.postAvailability = {
     headers: headersSchema,
     body: availabilitySchema,
     response: {
-      201: import_v46.z.object({
-        status: import_v46.z.literal("success"),
+      201: import_zod6.z.object({
+        status: import_zod6.z.literal("success"),
         data: responseAvailabilitySchema
       }),
       400: errorResponseSchema2,
@@ -2374,13 +3627,13 @@ appointmentDocs.getAvailability = {
     tags: ["Availability"],
     summary: "Buscar disponibilidade do m\xE9dico",
     description: "Retorna a disponibilidade configurada de um m\xE9dico",
-    params: import_v46.z.object({
-      doctorId: import_v46.z.string().describe("ID do m\xE9dico")
+    params: import_zod6.z.object({
+      doctorId: import_zod6.z.string().describe("ID do m\xE9dico")
     }),
     response: {
-      200: import_v46.z.object({
-        status: import_v46.z.literal("success"),
-        data: import_v46.z.array(responseAvailabilitySchema)
+      200: import_zod6.z.object({
+        status: import_zod6.z.literal("success"),
+        data: import_zod6.z.array(responseAvailabilitySchema)
       }),
       404: errorResponseSchema2,
       500: errorResponseSchema2
@@ -2394,14 +3647,14 @@ appointmentDocs.deleteAvailability = {
     summary: "Deletar disponibilidade do m\xE9dico",
     description: "Deleta uma disponibilidade espec\xEDfica do m\xE9dico logado. N\xE3o \xE9 poss\xEDvel deletar se houver agendamentos futuros.",
     headers: headersSchema,
-    params: import_v46.z.object({
-      availabilityId: import_v46.z.string().describe("ID da disponibilidade a ser deletada")
+    params: import_zod6.z.object({
+      availabilityId: import_zod6.z.string().describe("ID da disponibilidade a ser deletada")
     }),
     response: {
-      200: import_v46.z.object({
-        status: import_v46.z.literal("success"),
-        data: import_v46.z.object({
-          message: import_v46.z.string()
+      200: import_zod6.z.object({
+        status: import_zod6.z.literal("success"),
+        data: import_zod6.z.object({
+          message: import_zod6.z.string()
         })
       }),
       400: errorResponseSchema2,
@@ -2420,9 +3673,9 @@ appointmentDocs.getTodayAppointments = {
     description: "Retorna os agendamentos do dia para o m\xE9dico logado",
     headers: headersSchema,
     response: {
-      200: import_v46.z.object({
-        status: import_v46.z.literal("success"),
-        data: import_v46.z.array(responseAppointmentWithUsersSchema)
+      200: import_zod6.z.object({
+        status: import_zod6.z.literal("success"),
+        data: import_zod6.z.array(responseAppointmentWithUsersSchema)
       }),
       401: errorResponseSchema2,
       403: errorResponseSchema2,
@@ -2439,8 +3692,8 @@ appointmentDocs.postAppointmentForPatient = {
     headers: headersSchema,
     body: createAppointmentForPatientSchema,
     response: {
-      201: import_v46.z.object({
-        status: import_v46.z.literal("success"),
+      201: import_zod6.z.object({
+        status: import_zod6.z.literal("success"),
         data: responseAppointmentWithUsersSchema
       }),
       400: errorResponseSchema2,
@@ -2457,16 +3710,16 @@ appointmentDocs.getUserAppointments = {
     summary: "Buscar agendamentos de um usu\xE1rio (atendente)",
     description: "Permite que atendentes busquem agendamentos de um usu\xE1rio espec\xEDfico pelo ID",
     headers: headersSchema,
-    params: import_v46.z.object({
-      userId: import_v46.z.string().describe("ID do usu\xE1rio")
+    params: import_zod6.z.object({
+      userId: import_zod6.z.string().describe("ID do usu\xE1rio")
     }),
-    querystring: import_v46.z.object({
-      status: import_v46.z.enum(["scheduled", "confirmed", "completed", "cancelled", "no_show"]).optional().describe("Filtrar por status do agendamento")
+    querystring: import_zod6.z.object({
+      status: import_zod6.z.enum(["scheduled", "confirmed", "completed", "cancelled", "no_show"]).optional().describe("Filtrar por status do agendamento")
     }),
     response: {
-      200: import_v46.z.object({
-        status: import_v46.z.literal("success"),
-        data: import_v46.z.array(responseAppointmentWithUsersSchema)
+      200: import_zod6.z.object({
+        status: import_zod6.z.literal("success"),
+        data: import_zod6.z.array(responseAppointmentWithUsersSchema)
       }),
       401: errorResponseSchema2,
       403: errorResponseSchema2,
@@ -2479,24 +3732,24 @@ appointmentDocs.checkPatientDoctorAvailability = {
     tags: ["Appointment"],
     summary: "Verificar se paciente pode agendar com profissional",
     description: "Verifica se um paciente pode agendar com um profissional espec\xEDfico (sempre permite agendamento)",
-    params: import_v46.z.object({
-      patientId: import_v46.z.string().describe("ID do paciente"),
-      doctorId: import_v46.z.string().describe("ID do profissional")
+    params: import_zod6.z.object({
+      patientId: import_zod6.z.string().describe("ID do paciente"),
+      doctorId: import_zod6.z.string().describe("ID do profissional")
     }),
     response: {
-      200: import_v46.z.object({
-        status: import_v46.z.literal("success"),
-        data: import_v46.z.object({
-          canSchedule: import_v46.z.boolean(),
-          reason: import_v46.z.string().optional(),
-          existingAppointment: import_v46.z.object({
-            id: import_v46.z.string(),
-            startTime: import_v46.z.string(),
-            endTime: import_v46.z.string(),
-            status: import_v46.z.string(),
-            doctor: import_v46.z.object({
-              id: import_v46.z.string(),
-              name: import_v46.z.string()
+      200: import_zod6.z.object({
+        status: import_zod6.z.literal("success"),
+        data: import_zod6.z.object({
+          canSchedule: import_zod6.z.boolean(),
+          reason: import_zod6.z.string().optional(),
+          existingAppointment: import_zod6.z.object({
+            id: import_zod6.z.string(),
+            startTime: import_zod6.z.string(),
+            endTime: import_zod6.z.string(),
+            status: import_zod6.z.string(),
+            doctor: import_zod6.z.object({
+              id: import_zod6.z.string(),
+              name: import_zod6.z.string()
             })
           }).optional()
         })
@@ -2510,17 +3763,17 @@ appointmentDocs.generateAvailableSlots = {
     tags: ["Appointment"],
     summary: "Gerar hor\xE1rios dispon\xEDveis",
     description: "Gera hor\xE1rios dispon\xEDveis para um m\xE9dico em uma data espec\xEDfica",
-    params: import_v46.z.object({
-      doctorId: import_v46.z.string().describe("ID do m\xE9dico"),
-      date: import_v46.z.string().describe("Data no formato YYYY-MM-DD")
+    params: import_zod6.z.object({
+      doctorId: import_zod6.z.string().describe("ID do m\xE9dico"),
+      date: import_zod6.z.string().describe("Data no formato YYYY-MM-DD")
     }),
     response: {
-      200: import_v46.z.object({
-        status: import_v46.z.literal("success"),
-        data: import_v46.z.array(
-          import_v46.z.object({
-            time: import_v46.z.string(),
-            available: import_v46.z.boolean()
+      200: import_zod6.z.object({
+        status: import_zod6.z.literal("success"),
+        data: import_zod6.z.array(
+          import_zod6.z.object({
+            time: import_zod6.z.string(),
+            available: import_zod6.z.boolean()
           })
         )
       }),
@@ -2536,9 +3789,9 @@ appointmentDocs.fixAppointmentTimezones = {
     summary: "Corrigir timezones dos agendamentos",
     description: "Corrige os timezones de todos os agendamentos existentes (usar apenas uma vez)",
     response: {
-      200: import_v46.z.object({
-        status: import_v46.z.literal("success"),
-        message: import_v46.z.string()
+      200: import_zod6.z.object({
+        status: import_zod6.z.literal("success"),
+        message: import_zod6.z.string()
       }),
       500: errorResponseSchema2
     }
@@ -2555,8 +3808,8 @@ attendanceDocs.postAttendance = {
     headers: headersSchema,
     body: createAttendanceSchema,
     response: {
-      201: import_v46.z.object({
-        status: import_v46.z.literal("success"),
+      201: import_zod6.z.object({
+        status: import_zod6.z.literal("success"),
         data: attendanceSchema
       }),
       400: errorResponseSchema2,
@@ -2574,9 +3827,9 @@ attendanceDocs.getMyAttendances = {
     description: "Retorna todos os atendimentos realizados para o usu\xE1rio logado.",
     headers: headersSchema,
     response: {
-      200: import_v46.z.object({
-        status: import_v46.z.literal("success"),
-        data: import_v46.z.array(attendanceSchema)
+      200: import_zod6.z.object({
+        status: import_zod6.z.literal("success"),
+        data: import_zod6.z.array(attendanceSchema)
       }),
       401: errorResponseSchema2,
       500: errorResponseSchema2
@@ -2590,13 +3843,13 @@ attendanceDocs.getPatientAttendances = {
     summary: "Hist\xF3rico de atendimentos de um paciente",
     description: "Profissional visualiza todos os atendimentos de um paciente espec\xEDfico.",
     headers: headersSchema,
-    params: import_v46.z.object({
-      id: import_v46.z.string().describe("ID do paciente")
+    params: import_zod6.z.object({
+      id: import_zod6.z.string().describe("ID do paciente")
     }),
     response: {
-      200: import_v46.z.object({
-        status: import_v46.z.literal("success"),
-        data: import_v46.z.array(attendanceSchema)
+      200: import_zod6.z.object({
+        status: import_zod6.z.literal("success"),
+        data: import_zod6.z.array(attendanceSchema)
       }),
       401: errorResponseSchema2,
       403: errorResponseSchema2,
@@ -2674,8 +3927,8 @@ async function appointmentRoutes(app2) {
 
 // src/controllers/attendanceController.ts
 async function postAttendance(request, reply) {
-  const { id: doctorId, register } = request.usuario;
-  if (register !== "doctor") {
+  const { id: professionalId, primaryRole } = request.usuario;
+  if (primaryRole !== "professional") {
     return reply.status(403).send({
       status: "error",
       message: "Apenas profissionais podem registrar atendimentos"
@@ -2685,13 +3938,13 @@ async function postAttendance(request, reply) {
   const attendance = await prisma.attendance.create({
     data: {
       patientId,
-      doctorId,
+      professionalId,
       description,
       date: date ? new Date(date) : void 0
     },
     include: {
       patient: true,
-      doctor: true
+      professional: true
     }
   });
   return reply.status(201).send({
@@ -2700,10 +3953,10 @@ async function postAttendance(request, reply) {
   });
 }
 async function getMyAttendances(request, reply) {
-  const { id: userId, register } = request.usuario;
+  const { id: userId, primaryRole } = request.usuario;
   let where = {};
-  if (register === "doctor") {
-    where = { doctorId: userId };
+  if (primaryRole === "professional") {
+    where = { professionalId: userId };
   } else {
     where = { patientId: userId };
   }
@@ -2711,7 +3964,7 @@ async function getMyAttendances(request, reply) {
     where,
     include: {
       patient: true,
-      doctor: true
+      professional: true
     },
     orderBy: { date: "desc" }
   });
@@ -2721,8 +3974,8 @@ async function getMyAttendances(request, reply) {
   });
 }
 async function getPatientAttendances(request, reply) {
-  const { id: doctorId, register } = request.usuario;
-  if (register !== "doctor") {
+  const { id: professionalId, primaryRole } = request.usuario;
+  if (primaryRole !== "professional") {
     return reply.status(403).send({
       status: "error",
       message: "Apenas profissionais podem acessar o hist\xF3rico de pacientes"
@@ -2733,7 +3986,7 @@ async function getPatientAttendances(request, reply) {
     where: { patientId },
     include: {
       patient: true,
-      doctor: true
+      professional: true
     },
     orderBy: { date: "desc" }
   });
@@ -2744,36 +3997,36 @@ async function getPatientAttendances(request, reply) {
 }
 
 // src/docs/attendance.ts
-var import_v47 = require("zod/v4");
-var errorResponseSchema3 = import_v47.z.object({
-  status: import_v47.z.literal("error"),
-  message: import_v47.z.string()
+var import_zod7 = require("zod");
+var errorResponseSchema3 = import_zod7.z.object({
+  status: import_zod7.z.literal("error"),
+  message: import_zod7.z.string()
 });
-var attendanceSchema2 = import_v47.z.object({
-  id: import_v47.z.string(),
-  patientId: import_v47.z.string(),
-  doctorId: import_v47.z.string(),
-  description: import_v47.z.string(),
-  date: import_v47.z.string(),
-  createdAt: import_v47.z.string(),
-  updatedAt: import_v47.z.string(),
-  patient: import_v47.z.object({
-    id: import_v47.z.string(),
-    name: import_v47.z.string().nullish(),
-    email: import_v47.z.string(),
-    phone: import_v47.z.string().nullish()
+var attendanceSchema2 = import_zod7.z.object({
+  id: import_zod7.z.string(),
+  patientId: import_zod7.z.string(),
+  doctorId: import_zod7.z.string(),
+  description: import_zod7.z.string(),
+  date: import_zod7.z.string(),
+  createdAt: import_zod7.z.string(),
+  updatedAt: import_zod7.z.string(),
+  patient: import_zod7.z.object({
+    id: import_zod7.z.string(),
+    name: import_zod7.z.string().nullish(),
+    email: import_zod7.z.string(),
+    phone: import_zod7.z.string().nullish()
   }).optional(),
-  doctor: import_v47.z.object({
-    id: import_v47.z.string(),
-    name: import_v47.z.string().nullish(),
-    email: import_v47.z.string(),
-    phone: import_v47.z.string().nullish()
+  doctor: import_zod7.z.object({
+    id: import_zod7.z.string(),
+    name: import_zod7.z.string().nullish(),
+    email: import_zod7.z.string(),
+    phone: import_zod7.z.string().nullish()
   }).optional()
 });
-var createAttendanceSchema2 = import_v47.z.object({
-  patientId: import_v47.z.string(),
-  description: import_v47.z.string().min(1, "Descri\xE7\xE3o obrigat\xF3ria"),
-  date: import_v47.z.string().optional()
+var createAttendanceSchema2 = import_zod7.z.object({
+  patientId: import_zod7.z.string(),
+  description: import_zod7.z.string().min(1, "Descri\xE7\xE3o obrigat\xF3ria"),
+  date: import_zod7.z.string().optional()
   // pode ser preenchido automaticamente
 });
 var attendanceDocs2 = class {
@@ -2787,8 +4040,8 @@ attendanceDocs2.postAttendance = {
     headers: headersSchema,
     body: createAttendanceSchema2,
     response: {
-      201: import_v47.z.object({
-        status: import_v47.z.literal("success"),
+      201: import_zod7.z.object({
+        status: import_zod7.z.literal("success"),
         data: attendanceSchema2
       }),
       400: errorResponseSchema3,
@@ -2806,9 +4059,9 @@ attendanceDocs2.getMyAttendances = {
     description: "Retorna todos os atendimentos realizados para o usu\xE1rio logado.",
     headers: headersSchema,
     response: {
-      200: import_v47.z.object({
-        status: import_v47.z.literal("success"),
-        data: import_v47.z.array(attendanceSchema2)
+      200: import_zod7.z.object({
+        status: import_zod7.z.literal("success"),
+        data: import_zod7.z.array(attendanceSchema2)
       }),
       401: errorResponseSchema3,
       500: errorResponseSchema3
@@ -2822,13 +4075,13 @@ attendanceDocs2.getPatientAttendances = {
     summary: "Hist\xF3rico de atendimentos de um paciente",
     description: "Profissional visualiza todos os atendimentos de um paciente espec\xEDfico.",
     headers: headersSchema,
-    params: import_v47.z.object({
-      id: import_v47.z.string().describe("ID do paciente")
+    params: import_zod7.z.object({
+      id: import_zod7.z.string().describe("ID do paciente")
     }),
     response: {
-      200: import_v47.z.object({
-        status: import_v47.z.literal("success"),
-        data: import_v47.z.array(attendanceSchema2)
+      200: import_zod7.z.object({
+        status: import_zod7.z.literal("success"),
+        data: import_zod7.z.array(attendanceSchema2)
       }),
       401: errorResponseSchema3,
       403: errorResponseSchema3,
@@ -2855,6 +4108,682 @@ async function attendanceRoutes(app2) {
     preHandler: attendanceDocs2.getPatientAttendances.preHandler,
     handler: getPatientAttendances
   });
+}
+
+// src/controllers/organizationController.ts
+async function createOrganization(request, reply) {
+  try {
+    const {
+      name,
+      description,
+      cnpj,
+      address,
+      city,
+      state,
+      zipCode,
+      country,
+      phone,
+      email,
+      website
+    } = request.body;
+    if (!name) {
+      throw new BadRequest("Nome da organiza\xE7\xE3o \xE9 obrigat\xF3rio");
+    }
+    const organization = await prisma.organization.create({
+      data: {
+        name,
+        description,
+        cnpj,
+        address,
+        city,
+        state,
+        zipCode,
+        country,
+        phone,
+        email,
+        website
+      }
+    });
+    return reply.status(201).send({
+      status: "success",
+      data: organization
+    });
+  } catch (error) {
+    console.error("Erro ao criar organiza\xE7\xE3o:", error);
+    throw error;
+  }
+}
+async function getOrganizations(request, reply) {
+  try {
+    const organizations = await prisma.organization.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" }
+    });
+    return reply.status(200).send({
+      status: "success",
+      data: organizations
+    });
+  } catch (error) {
+    console.error("Erro ao buscar organiza\xE7\xF5es:", error);
+    throw error;
+  }
+}
+async function getOrganization(request, reply) {
+  try {
+    const { id } = request.params;
+    const organization = await prisma.organization.findUnique({
+      where: { id }
+    });
+    if (!organization) {
+      throw new NotFound("Organiza\xE7\xE3o n\xE3o encontrada");
+    }
+    return reply.status(200).send({
+      status: "success",
+      data: organization
+    });
+  } catch (error) {
+    console.error("Erro ao buscar organiza\xE7\xE3o:", error);
+    throw error;
+  }
+}
+async function updateOrganization(request, reply) {
+  try {
+    const { id } = request.params;
+    const updateData = request.body;
+    const organization = await prisma.organization.findUnique({
+      where: { id }
+    });
+    if (!organization) {
+      throw new NotFound("Organiza\xE7\xE3o n\xE3o encontrada");
+    }
+    const updatedOrganization = await prisma.organization.update({
+      where: { id },
+      data: updateData
+    });
+    return reply.status(200).send({
+      status: "success",
+      data: updatedOrganization
+    });
+  } catch (error) {
+    console.error("Erro ao atualizar organiza\xE7\xE3o:", error);
+    throw error;
+  }
+}
+async function deleteOrganization(request, reply) {
+  try {
+    const { id } = request.params;
+    const organization = await prisma.organization.findUnique({
+      where: { id }
+    });
+    if (!organization) {
+      throw new NotFound("Organiza\xE7\xE3o n\xE3o encontrada");
+    }
+    await prisma.organization.update({
+      where: { id },
+      data: { isActive: false }
+    });
+    return reply.status(200).send({
+      status: "success",
+      message: "Organiza\xE7\xE3o removida com sucesso"
+    });
+  } catch (error) {
+    console.error("Erro ao remover organiza\xE7\xE3o:", error);
+    throw error;
+  }
+}
+async function getUserOrganizations(request, reply) {
+  try {
+    const { id: userId } = request.usuario;
+    const userOrganizations = await prisma.userOrganization.findMany({
+      where: {
+        userId,
+        isActive: true
+      },
+      include: {
+        organization: true
+      },
+      orderBy: { createdAt: "asc" }
+    });
+    return reply.status(200).send({
+      status: "success",
+      data: userOrganizations
+    });
+  } catch (error) {
+    console.error("Erro ao buscar organiza\xE7\xF5es do usu\xE1rio:", error);
+    throw error;
+  }
+}
+async function addUserToOrganization2(request, reply) {
+  try {
+    const { userId, organizationId: organizationId2, role } = request.body;
+    if (!userId || !organizationId2 || !role) {
+      throw new BadRequest("userId, organizationId e role s\xE3o obrigat\xF3rios");
+    }
+    const user = await prisma.users.findUnique({
+      where: { id: userId }
+    });
+    if (!user) {
+      throw new NotFound("Usu\xE1rio n\xE3o encontrado");
+    }
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId2 }
+    });
+    if (!organization) {
+      throw new NotFound("Organiza\xE7\xE3o n\xE3o encontrada");
+    }
+    const existingUserOrg = await prisma.userOrganization.findUnique({
+      where: {
+        userId_organizationId: {
+          userId,
+          organizationId: organizationId2
+        }
+      }
+    });
+    if (existingUserOrg) {
+      throw new BadRequest("Usu\xE1rio j\xE1 est\xE1 associado a esta organiza\xE7\xE3o");
+    }
+    const userOrganization = await prisma.userOrganization.create({
+      data: {
+        userId,
+        organizationId: organizationId2,
+        role
+      },
+      include: {
+        organization: true
+      }
+    });
+    return reply.status(201).send({
+      status: "success",
+      data: userOrganization
+    });
+  } catch (error) {
+    console.error("Erro ao adicionar usu\xE1rio \xE0 organiza\xE7\xE3o:", error);
+    throw error;
+  }
+}
+async function updateUserOrganization(request, reply) {
+  try {
+    const { id } = request.params;
+    const updateData = request.body;
+    const userOrganization = await prisma.userOrganization.findUnique({
+      where: { id }
+    });
+    if (!userOrganization) {
+      throw new NotFound("Relacionamento usu\xE1rio-organiza\xE7\xE3o n\xE3o encontrado");
+    }
+    const updatedUserOrg = await prisma.userOrganization.update({
+      where: { id },
+      data: updateData,
+      include: {
+        organization: true
+      }
+    });
+    return reply.status(200).send({
+      status: "success",
+      data: updatedUserOrg
+    });
+  } catch (error) {
+    console.error(
+      "Erro ao atualizar relacionamento usu\xE1rio-organiza\xE7\xE3o:",
+      error
+    );
+    throw error;
+  }
+}
+async function removeUserFromOrganization2(request, reply) {
+  try {
+    const { id } = request.params;
+    const userOrganization = await prisma.userOrganization.findUnique({
+      where: { id }
+    });
+    if (!userOrganization) {
+      throw new NotFound("Relacionamento usu\xE1rio-organiza\xE7\xE3o n\xE3o encontrado");
+    }
+    await prisma.userOrganization.update({
+      where: { id },
+      data: { isActive: false }
+    });
+    return reply.status(200).send({
+      status: "success",
+      message: "Usu\xE1rio removido da organiza\xE7\xE3o com sucesso"
+    });
+  } catch (error) {
+    console.error("Erro ao remover usu\xE1rio da organiza\xE7\xE3o:", error);
+    throw error;
+  }
+}
+async function getOrganizationUsers(request, reply) {
+  try {
+    const { organizationId: organizationId2 } = request.params;
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId2 }
+    });
+    if (!organization) {
+      throw new NotFound("Organiza\xE7\xE3o n\xE3o encontrada");
+    }
+    const userOrganizations = await prisma.userOrganization.findMany({
+      where: {
+        organizationId: organizationId2,
+        isActive: true
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true
+          }
+        }
+      },
+      orderBy: { createdAt: "asc" }
+    });
+    return reply.status(200).send({
+      status: "success",
+      data: userOrganizations
+    });
+  } catch (error) {
+    console.error("Erro ao buscar usu\xE1rios da organiza\xE7\xE3o:", error);
+    throw error;
+  }
+}
+
+// src/routes/organization/organizationRoutes.ts
+async function organizationRoutes(fastify2) {
+  fastify2.get("/organizations", getOrganizations);
+  fastify2.get("/organizations/:id", getOrganization);
+  fastify2.addHook("preHandler", autenticarToken);
+  fastify2.post("/organizations", createOrganization);
+  fastify2.put("/organizations/:id", updateOrganization);
+  fastify2.delete("/organizations/:id", deleteOrganization);
+  fastify2.get("/user/organizations", getUserOrganizations);
+  fastify2.post("/user-organizations", addUserToOrganization2);
+  fastify2.put("/user-organizations/:id", updateUserOrganization);
+  fastify2.delete("/user-organizations/:id", removeUserFromOrganization2);
+  fastify2.get("/organizations/:organizationId/users", getOrganizationUsers);
+}
+
+// src/service/patientCIDService.service.ts
+async function createPatientCID(professionalId, data) {
+  const professional = await prisma.users.findUnique({
+    where: { id: professionalId },
+    include: {
+      userOrganizations: {
+        where: {
+          organizationId: data.organizationId,
+          role: { in: ["professional", "admin", "owner"] }
+        }
+      }
+    }
+  });
+  if (!professional) {
+    throw new NotFound("Profissional n\xE3o encontrado");
+  }
+  if (professional.userOrganizations.length === 0) {
+    throw new Unauthorized(
+      "Voc\xEA n\xE3o tem permiss\xE3o para criar CIDs nesta organiza\xE7\xE3o"
+    );
+  }
+  const patient = await prisma.users.findUnique({
+    where: { id: data.patientId }
+  });
+  if (!patient) {
+    throw new NotFound("Paciente n\xE3o encontrado");
+  }
+  const existingCID = await prisma.patientCID.findUnique({
+    where: {
+      patientId_professionalId_organizationId: {
+        patientId: data.patientId,
+        professionalId,
+        organizationId: data.organizationId
+      }
+    }
+  });
+  if (existingCID) {
+    throw new BadRequest("J\xE1 existe um CID para este paciente criado por voc\xEA");
+  }
+  const patientCID = await prisma.patientCID.create({
+    data: {
+      patientId: data.patientId,
+      professionalId,
+      organizationId: data.organizationId,
+      cid: data.cid,
+      description: data.description
+    },
+    include: {
+      patient: {
+        select: {
+          id: true,
+          name: true,
+          email: true
+        }
+      },
+      professional: {
+        select: {
+          id: true,
+          name: true,
+          email: true
+        }
+      },
+      organization: {
+        select: {
+          id: true,
+          name: true
+        }
+      }
+    }
+  });
+  return patientCID;
+}
+async function updatePatientCID(professionalId, patientCIDId, data) {
+  const patientCID = await prisma.patientCID.findUnique({
+    where: { id: patientCIDId },
+    include: {
+      professional: {
+        select: {
+          id: true,
+          name: true
+        }
+      }
+    }
+  });
+  if (!patientCID) {
+    throw new NotFound("CID n\xE3o encontrado");
+  }
+  if (patientCID.professionalId !== professionalId) {
+    throw new Unauthorized("Voc\xEA s\xF3 pode editar CIDs criados por voc\xEA");
+  }
+  const updatedCID = await prisma.patientCID.update({
+    where: { id: patientCIDId },
+    data: {
+      cid: data.cid,
+      description: data.description
+    },
+    include: {
+      patient: {
+        select: {
+          id: true,
+          name: true,
+          email: true
+        }
+      },
+      professional: {
+        select: {
+          id: true,
+          name: true,
+          email: true
+        }
+      },
+      organization: {
+        select: {
+          id: true,
+          name: true
+        }
+      }
+    }
+  });
+  return updatedCID;
+}
+async function deletePatientCID(professionalId, patientCIDId) {
+  const patientCID = await prisma.patientCID.findUnique({
+    where: { id: patientCIDId }
+  });
+  if (!patientCID) {
+    throw new NotFound("CID n\xE3o encontrado");
+  }
+  if (patientCID.professionalId !== professionalId) {
+    throw new Unauthorized("Voc\xEA s\xF3 pode deletar CIDs criados por voc\xEA");
+  }
+  await prisma.patientCID.delete({
+    where: { id: patientCIDId }
+  });
+  return { message: "CID deletado com sucesso" };
+}
+async function getPatientCIDs(patientId) {
+  const patientCIDs = await prisma.patientCID.findMany({
+    where: { patientId },
+    include: {
+      professional: {
+        select: {
+          id: true,
+          name: true,
+          email: true
+        }
+      },
+      organization: {
+        select: {
+          id: true,
+          name: true
+        }
+      }
+    },
+    orderBy: { createdAt: "desc" }
+  });
+  return patientCIDs;
+}
+async function getProfessionalCIDs(professionalId) {
+  const patientCIDs = await prisma.patientCID.findMany({
+    where: { professionalId },
+    include: {
+      patient: {
+        select: {
+          id: true,
+          name: true,
+          email: true
+        }
+      },
+      organization: {
+        select: {
+          id: true,
+          name: true
+        }
+      }
+    },
+    orderBy: { createdAt: "desc" }
+  });
+  return patientCIDs;
+}
+async function getPatientCIDById(patientCIDId) {
+  const patientCID = await prisma.patientCID.findUnique({
+    where: { id: patientCIDId },
+    include: {
+      patient: {
+        select: {
+          id: true,
+          name: true,
+          email: true
+        }
+      },
+      professional: {
+        select: {
+          id: true,
+          name: true,
+          email: true
+        }
+      },
+      organization: {
+        select: {
+          id: true,
+          name: true
+        }
+      }
+    }
+  });
+  if (!patientCID) {
+    throw new NotFound("CID n\xE3o encontrado");
+  }
+  return patientCID;
+}
+
+// src/controllers/patientCIDController.ts
+async function createPatientCIDController(request, reply) {
+  try {
+    const professional = await getUsuarioLogado(request);
+    const userOrg = professional.userOrganizations.find(
+      (org) => org.role === "professional" || org.role === "admin" || org.role === "owner"
+    );
+    if (!userOrg) {
+      return reply.status(403).send({
+        status: "error",
+        message: "Apenas profissionais podem criar CIDs"
+      });
+    }
+    const data = request.body;
+    const patientCID = await createPatientCID(professional.id, data);
+    return reply.status(201).send({
+      status: "success",
+      data: patientCID
+    });
+  } catch (error) {
+    console.error("Erro ao criar CID:", error);
+    return reply.status(400).send({
+      status: "error",
+      message: error instanceof Error ? error.message : "Erro ao criar CID"
+    });
+  }
+}
+async function updatePatientCIDController(request, reply) {
+  try {
+    const professional = await getUsuarioLogado(request);
+    const userOrg = professional.userOrganizations.find(
+      (org) => org.role === "professional" || org.role === "admin" || org.role === "owner"
+    );
+    if (!userOrg) {
+      return reply.status(403).send({
+        status: "error",
+        message: "Apenas profissionais podem editar CIDs"
+      });
+    }
+    const { id } = request.params;
+    const data = request.body;
+    const patientCID = await updatePatientCID(professional.id, id, data);
+    return reply.status(200).send({
+      status: "success",
+      data: patientCID
+    });
+  } catch (error) {
+    console.error("Erro ao atualizar CID:", error);
+    return reply.status(400).send({
+      status: "error",
+      message: error instanceof Error ? error.message : "Erro ao atualizar CID"
+    });
+  }
+}
+async function deletePatientCIDController(request, reply) {
+  try {
+    const professional = await getUsuarioLogado(request);
+    const userOrg = professional.userOrganizations.find(
+      (org) => org.role === "professional" || org.role === "admin" || org.role === "owner"
+    );
+    if (!userOrg) {
+      return reply.status(403).send({
+        status: "error",
+        message: "Apenas profissionais podem deletar CIDs"
+      });
+    }
+    const { id } = request.params;
+    const result = await deletePatientCID(professional.id, id);
+    return reply.status(200).send({
+      status: "success",
+      data: result
+    });
+  } catch (error) {
+    console.error("Erro ao deletar CID:", error);
+    return reply.status(400).send({
+      status: "error",
+      message: error instanceof Error ? error.message : "Erro ao deletar CID"
+    });
+  }
+}
+async function getPatientCIDsController(request, reply) {
+  try {
+    const user = await getUsuarioLogado(request);
+    const { patientId } = request.params;
+    const isOwnCIDs = user.id === patientId;
+    const isProfessional = user.userOrganizations.some(
+      (org) => org.role === "professional" || org.role === "admin" || org.role === "owner"
+    );
+    if (!isOwnCIDs && !isProfessional) {
+      return reply.status(403).send({
+        status: "error",
+        message: "Voc\xEA n\xE3o tem permiss\xE3o para visualizar estes CIDs"
+      });
+    }
+    const patientCIDs = await getPatientCIDs(patientId);
+    return reply.status(200).send({
+      status: "success",
+      data: patientCIDs
+    });
+  } catch (error) {
+    console.error("Erro ao buscar CIDs do paciente:", error);
+    return reply.status(400).send({
+      status: "error",
+      message: error instanceof Error ? error.message : "Erro ao buscar CIDs"
+    });
+  }
+}
+async function getProfessionalCIDsController(request, reply) {
+  try {
+    const professional = await getUsuarioLogado(request);
+    const userOrg = professional.userOrganizations.find(
+      (org) => org.role === "professional" || org.role === "admin" || org.role === "owner"
+    );
+    if (!userOrg) {
+      return reply.status(403).send({
+        status: "error",
+        message: "Apenas profissionais podem visualizar seus CIDs criados"
+      });
+    }
+    const patientCIDs = await getProfessionalCIDs(professional.id);
+    return reply.status(200).send({
+      status: "success",
+      data: patientCIDs
+    });
+  } catch (error) {
+    console.error("Erro ao buscar CIDs do profissional:", error);
+    return reply.status(400).send({
+      status: "error",
+      message: error instanceof Error ? error.message : "Erro ao buscar CIDs"
+    });
+  }
+}
+async function getPatientCIDByIdController(request, reply) {
+  try {
+    const user = await getUsuarioLogado(request);
+    const { id } = request.params;
+    const patientCID = await getPatientCIDById(id);
+    const isPatient = patientCID.patientId === user.id;
+    const isProfessional = patientCID.professionalId === user.id;
+    const isAdmin = user.userOrganizations.some(
+      (org) => org.role === "admin" || org.role === "owner"
+    );
+    if (!isPatient && !isProfessional && !isAdmin) {
+      return reply.status(403).send({
+        status: "error",
+        message: "Voc\xEA n\xE3o tem permiss\xE3o para visualizar este CID"
+      });
+    }
+    return reply.status(200).send({
+      status: "success",
+      data: patientCID
+    });
+  } catch (error) {
+    console.error("Erro ao buscar CID:", error);
+    return reply.status(400).send({
+      status: "error",
+      message: error instanceof Error ? error.message : "Erro ao buscar CID"
+    });
+  }
+}
+
+// src/routes/patientCID/patientCIDRoutes.ts
+async function patientCIDRoutes(app2) {
+  app2.withTypeProvider().addHook("preHandler", autenticarToken).post("/patient-cids", createPatientCIDController);
+  app2.withTypeProvider().addHook("preHandler", autenticarToken).put("/patient-cids/:id", updatePatientCIDController);
+  app2.withTypeProvider().addHook("preHandler", autenticarToken).delete("/patient-cids/:id", deletePatientCIDController);
+  app2.withTypeProvider().addHook("preHandler", autenticarToken).get("/patient-cids/patient/:patientId", getPatientCIDsController);
+  app2.withTypeProvider().addHook("preHandler", autenticarToken).get("/patient-cids/professional", getProfessionalCIDsController);
+  app2.withTypeProvider().addHook("preHandler", autenticarToken).get("/patient-cids/:id", getPatientCIDByIdController);
 }
 
 // src/server.ts
@@ -2926,6 +4855,8 @@ app.addHook("preSerialization", async (request, reply, payload) => {
 app.register(usuarioRoutes);
 app.register(appointmentRoutes);
 app.register(attendanceRoutes);
+app.register(organizationRoutes);
+app.register(patientCIDRoutes);
 app.setErrorHandler(errorHandler);
 app.listen({
   host: "0.0.0.0",

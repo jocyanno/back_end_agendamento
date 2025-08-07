@@ -7,8 +7,9 @@ export async function postAttendance(
   request: FastifyRequest,
   reply: FastifyReply
 ) {
-  const { id: doctorId, register } = (request as AuthenticatedRequest).usuario;
-  if (register !== "doctor") {
+  const { id: professionalId, primaryRole } = (request as AuthenticatedRequest)
+    .usuario;
+  if (primaryRole !== "professional") {
     return reply.status(403).send({
       status: "error",
       message: "Apenas profissionais podem registrar atendimentos"
@@ -22,13 +23,13 @@ export async function postAttendance(
   const attendance = await prisma.attendance.create({
     data: {
       patientId,
-      doctorId,
+      professionalId,
       description,
       date: date ? new Date(date) : undefined
     },
     include: {
       patient: true,
-      doctor: true
+      professional: true
     }
   });
   return reply.status(201).send({
@@ -42,10 +43,10 @@ export async function getMyAttendances(
   request: FastifyRequest,
   reply: FastifyReply
 ) {
-  const { id: userId, register } = (request as AuthenticatedRequest).usuario;
+  const { id: userId, primaryRole } = (request as AuthenticatedRequest).usuario;
   let where = {};
-  if (register === "doctor") {
-    where = { doctorId: userId };
+  if (primaryRole === "professional") {
+    where = { professionalId: userId };
   } else {
     where = { patientId: userId };
   }
@@ -53,7 +54,7 @@ export async function getMyAttendances(
     where,
     include: {
       patient: true,
-      doctor: true
+      professional: true
     },
     orderBy: { date: "desc" }
   });
@@ -68,8 +69,9 @@ export async function getPatientAttendances(
   request: FastifyRequest,
   reply: FastifyReply
 ) {
-  const { id: doctorId, register } = (request as AuthenticatedRequest).usuario;
-  if (register !== "doctor") {
+  const { id: professionalId, primaryRole } = (request as AuthenticatedRequest)
+    .usuario;
+  if (primaryRole !== "professional") {
     return reply.status(403).send({
       status: "error",
       message: "Apenas profissionais podem acessar o histórico de pacientes"
@@ -80,7 +82,7 @@ export async function getPatientAttendances(
     where: { patientId },
     include: {
       patient: true,
-      doctor: true
+      professional: true
     },
     orderBy: { date: "desc" }
   });

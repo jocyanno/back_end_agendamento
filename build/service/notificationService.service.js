@@ -109,11 +109,11 @@ async function sendAppointmentConfirmation(appointment) {
     appointmentId: appointment.id,
     type: "confirmation",
     title: "Agendamento Confirmado",
-    message: `Seu agendamento com ${appointment.doctor.name} foi confirmado para ${date} \xE0s ${time}`
+    message: `Seu agendamento com ${appointment.professional.name} foi confirmado para ${date} \xE0s ${time}`
   });
   const emailHtml = getAppointmentConfirmationTemplate({
     patientName: appointment.patient.name || "Paciente",
-    doctorName: appointment.doctor.name || "Profissional",
+    professionalName: appointment.professional.name || "Profissional",
     date,
     time
   });
@@ -126,11 +126,11 @@ async function sendAppointmentCancellation(appointment, reason) {
     appointmentId: appointment.id,
     type: "cancellation",
     title: "Agendamento Cancelado",
-    message: `Seu agendamento com ${appointment.doctor.name} para ${date} \xE0s ${time} foi cancelado`
+    message: `Seu agendamento com ${appointment.professional.name} para ${date} \xE0s ${time} foi cancelado`
   });
   const emailHtml = getAppointmentCancellationTemplate({
     patientName: appointment.patient.name || "Paciente",
-    doctorName: appointment.doctor.name || "Profissional",
+    professionalName: appointment.professional.name || "Profissional",
     date,
     time,
     reason

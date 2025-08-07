@@ -38,6 +38,7 @@ model Organization {
   appointments      Appointment[]
   availabilities    Availability[]
   attendances       Attendance[]
+  PatientCID        PatientCID[]
 
   @@map("organizations")
 }
@@ -58,7 +59,6 @@ model Users {
   state           String?
   zipCode         String?
   country         String?
-  cid             String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -72,6 +72,10 @@ model Users {
   attendancesAsProfessional  Attendance[]       @relation("AttendanceProfessional")
   Appointment                Appointment[]
   Attendance                 Attendance[]
+
+  // Relacionamentos PatientCID
+  patientCIDsAsPatient      PatientCID[] @relation("PatientCIDPatient")
+  patientCIDsAsProfessional PatientCID[] @relation("PatientCIDProfessional")
 
   @@map("users")
 }
@@ -94,6 +98,29 @@ model UserOrganization {
   @@index([userId])
   @@index([organizationId])
   @@map("user_organizations")
+}
+
+// Novo modelo para armazenar CIDs por profissional
+model PatientCID {
+  id             String   @id @default(cuid())
+  patientId      String
+  professionalId String
+  organizationId String
+  cid            String
+  description    String? // Descrição opcional do CID
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relacionamentos
+  patient      Users        @relation("PatientCIDPatient", fields: [patientId], references: [id], onDelete: Cascade)
+  professional Users        @relation("PatientCIDProfessional", fields: [professionalId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([patientId, professionalId, organizationId])
+  @@index([patientId])
+  @@index([professionalId])
+  @@index([organizationId])
+  @@map("patient_cids")
 }
 
 enum AppointmentStatus {

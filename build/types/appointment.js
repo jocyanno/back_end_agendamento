@@ -31,8 +31,8 @@ __export(appointment_exports, {
   updateAppointmentSchema: () => updateAppointmentSchema
 });
 module.exports = __toCommonJS(appointment_exports);
-var import_v4 = require("zod/v4");
-var appointmentStatusEnum = import_v4.z.enum([
+var import_zod = require("zod");
+var appointmentStatusEnum = import_zod.z.enum([
   "scheduled",
   "confirmed",
   "cancelled",
@@ -40,59 +40,59 @@ var appointmentStatusEnum = import_v4.z.enum([
   "no_show"
 ]);
 var responseAppointmentSchemaProps = {
-  id: import_v4.z.string(),
-  patientId: import_v4.z.string(),
-  doctorId: import_v4.z.string(),
-  startTime: import_v4.z.string(),
-  endTime: import_v4.z.string(),
+  id: import_zod.z.string(),
+  patientId: import_zod.z.string(),
+  professionalId: import_zod.z.string(),
+  startTime: import_zod.z.string(),
+  endTime: import_zod.z.string(),
   status: appointmentStatusEnum,
-  notes: import_v4.z.string().nullish(),
-  googleEventId: import_v4.z.string().nullish(),
-  createdAt: import_v4.z.string(),
-  updatedAt: import_v4.z.string()
+  notes: import_zod.z.string().nullish(),
+  googleEventId: import_zod.z.string().nullish(),
+  createdAt: import_zod.z.string(),
+  updatedAt: import_zod.z.string()
 };
-var responseAppointmentSchema = import_v4.z.object(
+var responseAppointmentSchema = import_zod.z.object(
   responseAppointmentSchemaProps
 );
 var responseAppointmentWithUsersSchema = responseAppointmentSchema.extend({
-  patient: import_v4.z.object({
-    id: import_v4.z.string(),
-    name: import_v4.z.string().nullish(),
-    email: import_v4.z.string(),
-    phone: import_v4.z.string().nullish()
+  patient: import_zod.z.object({
+    id: import_zod.z.string(),
+    name: import_zod.z.string().nullish(),
+    email: import_zod.z.string(),
+    phone: import_zod.z.string().nullish()
   }),
-  doctor: import_v4.z.object({
-    id: import_v4.z.string(),
-    name: import_v4.z.string().nullish(),
-    email: import_v4.z.string(),
-    phone: import_v4.z.string().nullish()
+  professional: import_zod.z.object({
+    id: import_zod.z.string(),
+    name: import_zod.z.string().nullish(),
+    email: import_zod.z.string(),
+    phone: import_zod.z.string().nullish()
   })
 });
-var createAppointmentSchema = import_v4.z.object({
-  doctorId: import_v4.z.string().min(1, "ID do m\xE9dico \xE9 obrigat\xF3rio"),
-  startTime: import_v4.z.string(),
-  notes: import_v4.z.string().optional()
+var createAppointmentSchema = import_zod.z.object({
+  professionalId: import_zod.z.string().min(1, "ID do profissional \xE9 obrigat\xF3rio"),
+  startTime: import_zod.z.string(),
+  notes: import_zod.z.string().optional()
 });
-var updateAppointmentSchema = import_v4.z.object({
-  startTime: import_v4.z.string().optional(),
+var updateAppointmentSchema = import_zod.z.object({
+  startTime: import_zod.z.string().optional(),
   status: appointmentStatusEnum.optional(),
-  notes: import_v4.z.string().optional()
+  notes: import_zod.z.string().optional()
 });
-var getAvailableSlotsSchema = import_v4.z.object({
-  doctorId: import_v4.z.string().min(1, "ID do m\xE9dico \xE9 obrigat\xF3rio"),
-  date: import_v4.z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data deve estar no formato YYYY-MM-DD")
+var getAvailableSlotsSchema = import_zod.z.object({
+  professionalId: import_zod.z.string().min(1, "ID do profissional \xE9 obrigat\xF3rio"),
+  date: import_zod.z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data deve estar no formato YYYY-MM-DD")
 });
-var availabilitySchema = import_v4.z.object({
-  dayOfWeek: import_v4.z.number().min(0).max(6),
-  startTime: import_v4.z.string().regex(/^\d{2}:\d{2}$/, "Hor\xE1rio deve estar no formato HH:mm"),
-  endTime: import_v4.z.string().regex(/^\d{2}:\d{2}$/, "Hor\xE1rio deve estar no formato HH:mm"),
-  isActive: import_v4.z.boolean().optional()
+var availabilitySchema = import_zod.z.object({
+  dayOfWeek: import_zod.z.number().min(0).max(6),
+  startTime: import_zod.z.string().regex(/^\d{2}:\d{2}$/, "Hor\xE1rio deve estar no formato HH:mm"),
+  endTime: import_zod.z.string().regex(/^\d{2}:\d{2}$/, "Hor\xE1rio deve estar no formato HH:mm"),
+  isActive: import_zod.z.boolean().optional()
 });
 var responseAvailabilitySchema = availabilitySchema.extend({
-  id: import_v4.z.string(),
-  doctorId: import_v4.z.string(),
-  createdAt: import_v4.z.string(),
-  updatedAt: import_v4.z.string()
+  id: import_zod.z.string(),
+  professionalId: import_zod.z.string(),
+  createdAt: import_zod.z.string(),
+  updatedAt: import_zod.z.string()
 });
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {

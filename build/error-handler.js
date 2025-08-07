@@ -23,7 +23,7 @@ __export(error_handler_exports, {
   errorHandler: () => errorHandler
 });
 module.exports = __toCommonJS(error_handler_exports);
-var import_v4 = require("zod/v4");
+var import_zod = require("zod");
 
 // src/_errors/bad-request.ts
 var BadRequest = class extends Error {
@@ -51,7 +51,7 @@ var Unauthorized = class extends Error {
 
 // src/error-handler.ts
 function errorHandler(error, request, reply) {
-  if (error instanceof import_v4.ZodError) {
+  if (error instanceof import_zod.ZodError) {
     return reply.status(400).send({
       status: "error",
       message: "Validation error",
