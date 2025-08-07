@@ -1,9 +1,15 @@
 import { FastifyRequest } from "fastify";
-import { Register } from "@prisma/client";
+import { OrganizationRole } from "@prisma/client";
 
-export interface AuthenticatedRequest extends FastifyRequest {
+export interface AuthenticatedRequest {
   usuario: {
     id: string;
-    register: Register;
+    primaryRole: OrganizationRole;
+    primaryOrganizationId?: string;
+    userOrganizations?: Array<{
+      organizationId: string;
+      role: OrganizationRole;
+      organizationName: string;
+    }>;
   };
 }

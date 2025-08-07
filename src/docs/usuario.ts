@@ -1,11 +1,11 @@
-import { z } from "zod/v4";
+import { z } from "zod";
 import { autenticarToken } from "@/middlewares/auth";
 import { headersSchema } from "@/utils/scheme";
 import {
   editUsuarioSchema,
   editUsuarioByAdminSchema,
   requestUsuarioSchema,
-  responseDoctorSchema,
+  responseProfessionalSchema,
   responseUsuarioLoginSchema,
   responseUsuarioSchema
 } from "@/types/usuario";
@@ -34,15 +34,15 @@ export class usuarioDocs {
     }
   };
 
-  static getDoctors = {
+  static getProfessionals = {
     schema: {
       tags: ["Usuario"],
-      summary: "Listar todos os médicos",
-      description: "Retorna todos os médicos cadastrados no sistema",
+      summary: "Listar todos os profissionais",
+      description: "Retorna todos os profissionais cadastrados no sistema",
       response: {
         200: z.object({
           status: z.literal("success"),
-          data: z.array(responseDoctorSchema)
+          data: z.array(responseProfessionalSchema)
         }),
         500: errorResponseSchema
       }

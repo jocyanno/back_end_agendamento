@@ -5,7 +5,7 @@ import {
   createUsuarioAdmin,
   deleteUsuario,
   getAllUsuarios,
-  getDoctors,
+  getProfessionals,
   getUsuario,
   getUsuarioById,
   loginUsuario,
@@ -21,7 +21,7 @@ export async function usuarioRoutes(app: FastifyInstance) {
 
   app
     .withTypeProvider<ZodTypeProvider>()
-    .get("/doctors", usuarioDocs.getDoctors, getDoctors);
+    .get("/professionals", usuarioDocs.getProfessionals, getProfessionals);
 
   app
     .withTypeProvider<ZodTypeProvider>()

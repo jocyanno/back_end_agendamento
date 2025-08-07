@@ -1,6 +1,7 @@
 import Fastify, { FastifyInstance } from "fastify";
 import jwt from "@fastify/jwt";
 import { usuarioRoutes } from "@/routes/user/usuarioRoutes";
+import { organizationRoutes } from "@/routes/organization/organizationRoutes";
 
 export function build(opts = {}): FastifyInstance {
   const app = Fastify(opts);
@@ -12,6 +13,7 @@ export function build(opts = {}): FastifyInstance {
 
   // Registrar rotas
   app.register(usuarioRoutes);
+  app.register(organizationRoutes);
 
   return app;
 }

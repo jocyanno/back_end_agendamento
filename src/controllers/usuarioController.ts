@@ -6,7 +6,7 @@ import {
   createUser,
   createUserAdmin,
   deleteUser,
-  getAllDoctors,
+  getAllProfessionals,
   getAllUsers,
   getUserById,
   getUserExisting,
@@ -14,7 +14,7 @@ import {
   getUsuarioLogadoIsAdmin,
   getUsuarioLogadoIsAdminOrAttendant,
   updateUser,
-  updateUserByDoctor
+  updateUserByProfessional
 } from "@/service/usuarioService.service";
 
 export async function getUsuario(request: FastifyRequest, reply: FastifyReply) {
@@ -153,12 +153,15 @@ export async function updateUsuario(
   });
 }
 
-export async function getDoctors(request: FastifyRequest, reply: FastifyReply) {
-  const doctors = await getAllDoctors();
+export async function getProfessionals(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  const professionals = await getAllProfessionals();
 
   return reply.status(200).send({
     status: "success",
-    data: doctors
+    data: professionals
   });
 }
 
@@ -204,7 +207,7 @@ export async function updateUsuarioByDoctor(
   const { id } = request.params as { id: string };
   const parseResult = request.body as Prisma.UsersUncheckedUpdateInput;
 
-  const updateUsuario = await updateUserByDoctor(id, parseResult);
+  const updateUsuario = await updateUserByProfessional(id, parseResult);
 
   return reply.status(200).send({
     status: "success",

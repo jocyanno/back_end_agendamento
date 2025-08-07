@@ -1,4 +1,4 @@
-import { z } from "zod/v4";
+import { z } from "zod";
 
 // Enums
 export const appointmentStatusEnum = z.enum([
@@ -13,7 +13,7 @@ export const appointmentStatusEnum = z.enum([
 export const responseAppointmentSchemaProps = {
   id: z.string(),
   patientId: z.string(),
-  doctorId: z.string(),
+  professionalId: z.string(),
   startTime: z.string(),
   endTime: z.string(),
   status: appointmentStatusEnum,
@@ -27,7 +27,7 @@ export const responseAppointmentSchema = z.object(
   responseAppointmentSchemaProps
 );
 
-// Schema com dados do paciente e médico
+// Schema com dados do paciente e profissional
 export const responseAppointmentWithUsersSchema =
   responseAppointmentSchema.extend({
     patient: z.object({
@@ -36,7 +36,7 @@ export const responseAppointmentWithUsersSchema =
       email: z.string(),
       phone: z.string().nullish()
     }),
-    doctor: z.object({
+    professional: z.object({
       id: z.string(),
       name: z.string().nullish(),
       email: z.string(),
@@ -46,7 +46,7 @@ export const responseAppointmentWithUsersSchema =
 
 // Schema para criar agendamento
 export const createAppointmentSchema = z.object({
-  doctorId: z.string().min(1, "ID do médico é obrigatório"),
+  professionalId: z.string().min(1, "ID do profissional é obrigatório"),
   startTime: z.string(),
   notes: z.string().optional()
 });
@@ -60,7 +60,7 @@ export const updateAppointmentSchema = z.object({
 
 // Schema para buscar horários disponíveis
 export const getAvailableSlotsSchema = z.object({
-  doctorId: z.string().min(1, "ID do médico é obrigatório"),
+  professionalId: z.string().min(1, "ID do profissional é obrigatório"),
   date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Data deve estar no formato YYYY-MM-DD")
@@ -80,7 +80,7 @@ export const availabilitySchema = z.object({
 
 export const responseAvailabilitySchema = availabilitySchema.extend({
   id: z.string(),
-  doctorId: z.string(),
+  professionalId: z.string(),
   createdAt: z.string(),
   updatedAt: z.string()
 });

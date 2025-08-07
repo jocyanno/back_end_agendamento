@@ -24,7 +24,6 @@ export const selectUsuario = {
   zipCode: true,
   country: true,
   cid: true,
-  register: true,
   createdAt: true,
   updatedAt: true
 };
@@ -48,14 +47,72 @@ export async function authenticateUser(
 
   const { password: _, ...userWithoutPassword } = user;
 
+  // Buscar organizações do usuário para determinar o papel principal
+  const userOrganizations = await prisma.userOrganization.findMany({
+    where: { userId: user.id, isActive: true },
+    include: {
+      organization: {
+        select: {
+          id: true,
+          name: true
+        }
+      }
+    },
+    orderBy: { createdAt: "asc" }
+  });
+
+  // Determinar o papel principal (prioridade: owner > admin > professional > attendant > patient > member)
+  let primaryRole = "member";
+  let primaryOrganizationId = null;
+
+  if (userOrganizations.length > 0) {
+    const rolePriority = {
+      owner: 6,
+      admin: 5,
+      professional: 4,
+      attendant: 3,
+      patient: 2,
+      member: 1
+    };
+
+    let highestPriority = 0;
+    for (const userOrg of userOrganizations) {
+      const priority =
+        rolePriority[userOrg.role as keyof typeof rolePriority] || 0;
+      if (priority > highestPriority) {
+        highestPriority = priority;
+        primaryRole = userOrg.role;
+        primaryOrganizationId = userOrg.organization.id;
+      }
+    }
+  }
+
   const token = await fastify.jwt.sign(
-    { userId: user.id, register: user.register },
+    {
+      userId: user.id,
+      primaryRole,
+      primaryOrganizationId,
+      userOrganizations: userOrganizations.map((uo) => ({
+        organizationId: uo.organization.id,
+        role: uo.role,
+        organizationName: uo.organization.name
+      }))
+    },
     { expiresIn: "7d" }
   );
 
   return {
     token,
-    usuario: userWithoutPassword
+    usuario: {
+      ...userWithoutPassword,
+      primaryRole,
+      primaryOrganizationId,
+      organizations: userOrganizations.map((uo) => ({
+        id: uo.organization.id,
+        name: uo.organization.name,
+        role: uo.role
+      }))
+    }
   };
 }
 
@@ -80,22 +137,26 @@ export const getUsuarioLogado = async (request: FastifyRequest) => {
 };
 
 export const getUsuarioLogadoIsAdmin = async (request: FastifyRequest) => {
-  const { id: usuarioId, register } = (request as AuthenticatedRequest).usuario;
+  const { id: usuarioId, primaryRole } = (request as AuthenticatedRequest)
+    .usuario;
 
-  // Verifica diretamente do token se é doctor, mais eficiente
-  if (register !== "doctor") {
-    throw new Unauthorized("User is not doctor");
+  // Verifica se o usuário tem papel de professional, admin ou owner
+  if (!["professional", "admin", "owner"].includes(primaryRole)) {
+    throw new Unauthorized("User is not authorized");
   }
 
   return searchUsuario(usuarioId);
 };
 
-export const getUsuarioLogadoIsAdminOrAttendant = async (request: FastifyRequest) => {
-  const { id: usuarioId, register } = (request as AuthenticatedRequest).usuario;
+export const getUsuarioLogadoIsAdminOrAttendant = async (
+  request: FastifyRequest
+) => {
+  const { id: usuarioId, primaryRole } = (request as AuthenticatedRequest)
+    .usuario;
 
-  // Verifica diretamente do token se é doctor, mais eficiente
-  if (register !== "doctor" && register !== "attendant") {
-    throw new Unauthorized("User is not doctor");
+  // Verifica se o usuário tem papel de professional, admin, owner ou attendant
+  if (!["professional", "admin", "owner", "attendant"].includes(primaryRole)) {
+    throw new Unauthorized("User is not authorized");
   }
 
   return searchUsuario(usuarioId);
@@ -170,8 +231,8 @@ export async function getUserExisting({
 }
 
 export async function createUser(data: Prisma.UsersCreateInput) {
-  if (data.register === "doctor") {
-    throw new BadRequest("Register doctor is not allowed");
+  if (data.register === "professional") {
+    throw new BadRequest("Register professional is not allowed");
   }
 
   if (!data.password) {
@@ -302,24 +363,19 @@ export async function updateUser(
 export async function getAllUsers() {
   const users = await prisma.users.findMany({
     where: {
-      OR: [
-        { register: "patient" },
-        { register: "parents" }
-      ]
+      OR: [{ register: "patient" }, { register: "parents" }]
     },
     select: selectUsuario,
-    orderBy: [
-      { name: "asc" }
-    ]
+    orderBy: [{ name: "asc" }]
   });
 
   return users;
 }
 
-export async function getAllDoctors() {
-  const doctors = await prisma.users.findMany({
+export async function getAllProfessionals() {
+  const professionals = await prisma.users.findMany({
     where: {
-      register: "doctor"
+      register: "professional"
     },
     select: {
       id: true,
@@ -339,15 +395,15 @@ export async function getAllDoctors() {
     }
   });
 
-  return doctors;
+  return professionals;
 }
 
-export async function updateUserByDoctor(
+export async function updateUserByProfessional(
   targetUserId: string,
   data: Prisma.UsersUncheckedUpdateInput
 ) {
   // Esta é a única função que permite alterar o campo 'cid'
-  // Apenas administradores (doctors) podem chamar esta função
+  // Apenas administradores (professionals) podem chamar esta função
   const searchUser = await prisma.users.findUnique({
     where: {
       id: targetUserId

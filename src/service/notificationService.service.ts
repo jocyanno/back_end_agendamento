@@ -45,7 +45,7 @@ export async function sendEmail(to: string, subject: string, html: string) {
 // Template de email para confirmação de agendamento
 export function getAppointmentConfirmationTemplate(data: {
   patientName: string;
-  doctorName: string;
+  professionalName: string;
   date: string;
   time: string;
   location?: string;
@@ -80,7 +80,7 @@ export function getAppointmentConfirmationTemplate(data: {
 // Template de email para cancelamento
 export function getAppointmentCancellationTemplate(data: {
   patientName: string;
-  doctorName: string;
+  professionalName: string;
   date: string;
   time: string;
   reason?: string;
@@ -131,13 +131,13 @@ export async function sendAppointmentConfirmation(appointment: any) {
     appointmentId: appointment.id,
     type: "confirmation",
     title: "Agendamento Confirmado",
-    message: `Seu agendamento com ${appointment.doctor.name} foi confirmado para ${date} às ${time}`
+    message: `Seu agendamento com ${appointment.professional.name} foi confirmado para ${date} às ${time}`
   });
 
   // Enviar email
   const emailHtml = getAppointmentConfirmationTemplate({
     patientName: appointment.patient.name || "Paciente",
-    doctorName: appointment.doctor.name || "Profissional",
+    professionalName: appointment.professional.name || "Profissional",
     date,
     time
   });
@@ -166,13 +166,13 @@ export async function sendAppointmentCancellation(
     appointmentId: appointment.id,
     type: "cancellation",
     title: "Agendamento Cancelado",
-    message: `Seu agendamento com ${appointment.doctor.name} para ${date} às ${time} foi cancelado`
+    message: `Seu agendamento com ${appointment.professional.name} para ${date} às ${time} foi cancelado`
   });
 
   // Enviar email
   const emailHtml = getAppointmentCancellationTemplate({
     patientName: appointment.patient.name || "Paciente",
-    doctorName: appointment.doctor.name || "Profissional",
+    professionalName: appointment.professional.name || "Profissional",
     date,
     time,
     reason

@@ -7,11 +7,39 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Register {
+enum OrganizationRole {
+  owner
+  admin
+  member
+  professional
   patient
-  parents
   attendant
-  doctor
+}
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  cnpj        String?  @unique
+  address     String?
+  city        String?
+  state       String?
+  zipCode     String?
+  country     String?
+  phone       String?
+  email       String?
+  website     String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relacionamentos
+  userOrganizations UserOrganization[]
+  appointments      Appointment[]
+  availabilities    Availability[]
+  attendances       Attendance[]
+
+  @@map("organizations")
 }
 
 model Users {
@@ -20,7 +48,6 @@ model Users {
   email           String    @unique
   password        String
   cpf             String    @unique
-  register        Register  @default(patient)
   image           String?
   phone           String?
   birthDate       DateTime?
@@ -36,14 +63,37 @@ model Users {
   updatedAt       DateTime  @updatedAt
 
   // Relacionamentos
-  appointmentsAsPatient Appointment[]  @relation("PatientAppointments")
-  appointmentsAsDoctor  Appointment[]  @relation("DoctorAppointments")
-  availabilities        Availability[]
-  notifications         Notification[]
-  attendancesAsPatient  Attendance[]   @relation("AttendancePatient")
-  attendancesAsDoctor   Attendance[]   @relation("AttendanceDoctor")
+  userOrganizations          UserOrganization[]
+  appointmentsAsPatient      Appointment[]      @relation("PatientAppointments")
+  appointmentsAsProfessional Appointment[]      @relation("ProfessionalAppointments")
+  availabilities             Availability[]
+  notifications              Notification[]
+  attendancesAsPatient       Attendance[]       @relation("AttendancePatient")
+  attendancesAsProfessional  Attendance[]       @relation("AttendanceProfessional")
+  Appointment                Appointment[]
+  Attendance                 Attendance[]
 
   @@map("users")
+}
+
+model UserOrganization {
+  id             String           @id @default(cuid())
+  userId         String
+  organizationId String
+  role           OrganizationRole @default(member)
+  isActive       Boolean          @default(true)
+  joinedAt       DateTime         @default(now())
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  // Relacionamentos
+  user         Users        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([userId])
+  @@index([organizationId])
+  @@map("user_organizations")
 }
 
 enum AppointmentStatus {
@@ -55,43 +105,51 @@ enum AppointmentStatus {
 }
 
 model Appointment {
-  id            String            @id @default(cuid())
-  patientId     String
-  doctorId      String
-  startTime     DateTime
-  endTime       DateTime
-  status        AppointmentStatus @default(scheduled)
-  notes         String?
-  googleEventId String?           @unique
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  id             String            @id @default(cuid())
+  patientId      String
+  professionalId String
+  organizationId String
+  startTime      DateTime
+  endTime        DateTime
+  status         AppointmentStatus @default(scheduled)
+  notes          String?
+  googleEventId  String?           @unique
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
   // Relacionamentos
   patient      Users          @relation("PatientAppointments", fields: [patientId], references: [id])
-  doctor       Users          @relation("DoctorAppointments", fields: [doctorId], references: [id])
+  professional Users          @relation("ProfessionalAppointments", fields: [professionalId], references: [id])
+  organization Organization   @relation(fields: [organizationId], references: [id])
   notification Notification[]
+  Users        Users?         @relation(fields: [usersId], references: [id])
+  usersId      String?
 
   @@index([patientId])
-  @@index([doctorId])
+  @@index([professionalId])
+  @@index([organizationId])
   @@index([startTime])
   @@map("appointments")
 }
 
 model Availability {
-  id        String   @id @default(cuid())
-  doctorId  String
-  dayOfWeek Int // 0-6 (domingo-sábado)
-  startTime String // formato HH:mm
-  endTime   String // formato HH:mm
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String   @id @default(cuid())
+  professionalId String
+  organizationId String
+  dayOfWeek      Int // 0-6 (domingo-sábado)
+  startTime      String // formato HH:mm
+  endTime        String // formato HH:mm
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   // Relacionamentos
-  doctor Users @relation(fields: [doctorId], references: [id])
+  professional Users        @relation(fields: [professionalId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
 
-  @@unique([doctorId, dayOfWeek, startTime])
-  @@index([doctorId])
+  @@unique([professionalId, organizationId, dayOfWeek, startTime])
+  @@index([professionalId])
+  @@index([organizationId])
   @@map("availabilities")
 }
 
@@ -116,19 +174,24 @@ model Notification {
 }
 
 model Attendance {
-  id          String   @id @default(cuid())
-  patientId   String
-  doctorId    String
-  description String
-  date        DateTime @default(now())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(cuid())
+  patientId      String
+  professionalId String
+  organizationId String
+  description    String
+  date           DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   // Relacionamentos
-  patient Users @relation("AttendancePatient", fields: [patientId], references: [id])
-  doctor  Users @relation("AttendanceDoctor", fields: [doctorId], references: [id])
+  patient      Users        @relation("AttendancePatient", fields: [patientId], references: [id])
+  professional Users        @relation("AttendanceProfessional", fields: [professionalId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+  Users        Users?       @relation(fields: [usersId], references: [id])
+  usersId      String?
 
   @@index([patientId])
-  @@index([doctorId])
+  @@index([professionalId])
+  @@index([organizationId])
   @@map("attendances")
 }

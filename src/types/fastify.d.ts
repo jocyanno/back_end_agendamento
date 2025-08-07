@@ -1,27 +1,37 @@
 import "@fastify/jwt";
-import { Register } from "@prisma/client";
+import { OrganizationRole } from "@prisma/client";
 
 declare module "@fastify/jwt" {
   interface FastifyJWT {
-    payload: { userId: string; register: Register };
-    user: { userId: string; register: Register };
+    payload: { userId: string; register: OrganizationRole };
+    user: { userId: string; register: OrganizationRole };
   }
 }
 
 declare module "fastify" {
   interface FastifyRequest {
-    jwt: {
-      sign: (payload: any, options?: any) => Promise<string>;
-      verify: (token: string, options?: any) => Promise<any>;
+    user: {
+      userId: string;
+      primaryRole: OrganizationRole;
+      primaryOrganizationId?: string;
+      userOrganizations?: Array<{
+        organizationId: string;
+        role: OrganizationRole;
+        organizationName: string;
+      }>;
     };
-    jwtVerify: () => Promise<void>;
-    user: { userId: string; register: Register };
   }
 
-  interface FastifyInstance {
-    jwt: {
-      sign: (payload: any, options?: any) => Promise<string>;
-      verify: (token: string, options?: any) => Promise<any>;
+  interface FastifyReply {
+    user: {
+      userId: string;
+      primaryRole: OrganizationRole;
+      primaryOrganizationId?: string;
+      userOrganizations?: Array<{
+        organizationId: string;
+        role: OrganizationRole;
+        organizationName: string;
+      }>;
     };
   }
 }

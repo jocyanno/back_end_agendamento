@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "availabilities_professionalId_organizationId_dayOfWeek_startTim" RENAME TO "availabilities_professionalId_organizationId_dayOfWeek_star_key";

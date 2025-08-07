@@ -4,15 +4,15 @@ import {
   createAppointment,
   createAppointmentForAttendant,
   getPatientAppointments,
-  getDoctorAppointments,
+  getProfessionalAppointments,
   updateAppointmentStatus,
-  createDoctorAvailability,
-  getDoctorAvailability,
+  createProfessionalAvailability,
+  getProfessionalAvailability,
   generateAvailableSlots,
   getAppointmentById,
-  deleteDoctorAvailability,
+  deleteProfessionalAvailability,
   cancelAppointmentByAttendant,
-  canPatientScheduleWithDoctor,
+  canPatientScheduleWithProfessional,
   fixAppointmentTimezones
 } from "@/service/appointmentService.service";
 import { AppointmentStatus } from "@prisma/client";
@@ -133,7 +133,12 @@ export async function getMyAppointments(
     const start = startDate ? new Date(startDate) : undefined;
     const end = endDate ? new Date(endDate) : undefined;
 
-    appointments = await getDoctorAppointments(userId, start, end);
+    appointments = await getProfessionalAppointments(
+      userId,
+      undefined,
+      start,
+      end
+    );
   } else {
     appointments = await getPatientAppointments(userId, status);
   }
@@ -188,7 +193,11 @@ export async function postAvailability(
       endTime: string;
     };
 
-    const created = await createDoctorAvailability(doctorId, availability);
+    const created = await createProfessionalAvailability(
+      doctorId,
+      organizationId,
+      availability
+    );
 
     return reply.status(201).send({
       status: "success",
@@ -216,7 +225,7 @@ export async function getAvailability(
 ) {
   const { doctorId } = request.params as { doctorId: string };
 
-  const availabilities = await getDoctorAvailability(doctorId);
+  const availabilities = await getProfessionalAvailability(doctorId);
 
   return reply.status(200).send({
     status: "success",
@@ -242,7 +251,7 @@ export async function getTodayAppointments(
   const startOfDay = today.clone().startOf("day").toDate();
   const endOfDay = today.clone().endOf("day").toDate();
 
-  const appointments = await getDoctorAppointments(
+  const appointments = await getProfessionalAppointments(
     doctorId,
     startOfDay,
     endOfDay
@@ -360,7 +369,10 @@ export async function deleteAvailability(
 
     const { availabilityId } = request.params as { availabilityId: string };
 
-    const result = await deleteDoctorAvailability(availabilityId, doctorId);
+    const result = await deleteProfessionalAvailability(
+      availabilityId,
+      doctorId
+    );
 
     return reply.status(200).send({
       status: "success",
@@ -485,7 +497,7 @@ export async function checkPatientDoctorAvailability(
       doctorId: string;
     };
 
-    const availability = await canPatientScheduleWithDoctor(
+    const availability = await canPatientScheduleWithProfessional(
       patientId,
       doctorId
     );

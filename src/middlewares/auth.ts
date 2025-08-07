@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { AuthenticatedRequest } from "../types/AuthenticatedRequest";
-import { Register } from "@prisma/client";
+import { OrganizationRole } from "@prisma/client";
 import { Unauthorized } from "@/_errors/unauthorized";
 
 export async function autenticarToken(
@@ -25,14 +25,23 @@ export async function autenticarToken(
     // Verificar o token JWT
     await request.jwtVerify();
 
-    const { userId, register } = request.user as {
-      userId: string;
-      register: Register;
-    };
+    const { userId, primaryRole, primaryOrganizationId, userOrganizations } =
+      request.user as {
+        userId: string;
+        primaryRole: OrganizationRole;
+        primaryOrganizationId?: string;
+        userOrganizations?: Array<{
+          organizationId: string;
+          role: OrganizationRole;
+          organizationName: string;
+        }>;
+      };
 
     (request as AuthenticatedRequest).usuario = {
       id: userId,
-      register: register
+      primaryRole: primaryRole,
+      primaryOrganizationId: primaryOrganizationId,
+      userOrganizations: userOrganizations
     };
   } catch (error) {
     if (error instanceof Unauthorized) {

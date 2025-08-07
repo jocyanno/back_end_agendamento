@@ -1,5 +1,5 @@
 import { FastifyError, FastifyReply, FastifyRequest } from "fastify";
-import { ZodError } from "zod/v4";
+import { ZodError } from "zod";
 import { BadRequest } from "./_errors/bad-request";
 import { NotFound } from "./_errors/not-found";
 import { Unauthorized } from "./_errors/unauthorized";
